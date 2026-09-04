@@ -1,0 +1,58 @@
+@page
+@model GoPickup.Admin.Pages.ConductoresPendientesModel
+<h2>Solicitudes de nuevos conductores</h2>
+<p style="color:#6b7280;">Estas solicitudes fueron llenadas desde la app móvil. Revisa las fotos y los datos antes de aprobar.</p>
+
+@if (!Model.Pendientes.Any())
+{
+    <p>No hay solicitudes pendientes por revisar. 🎉</p>
+}
+else
+{
+    @foreach (var c in Model.Pendientes)
+    {
+        <div class="tarjeta-conductor">
+            <div class="tarjeta-conductor-header">
+                <img class="foto-perfil" src="@Model.UrlFoto(c.Usuario?.FotoPerfilUrl)" alt="Foto de perfil" />
+                <div>
+                    <h3 style="margin:0;">@c.Usuario?.NombreCompleto</h3>
+                    <p style="margin:2px 0; color:#6b7280; font-size:13px;">@c.Usuario?.Correo · @c.Usuario?.Telefono</p>
+                    <p style="margin:2px 0; font-size:13px;">Cédula: <b>@c.NumeroCedula</b> &nbsp;|&nbsp; Licencia tipo: <b>@c.TipoLicencia</b></p>
+                    <p style="margin:2px 0; font-size:13px;">Placa: <b>@c.Vehiculo?.Placa</b> &nbsp;|&nbsp; @c.Vehiculo?.Marca @c.Vehiculo?.Modelo (@c.Vehiculo?.Anio) &nbsp;|&nbsp; @c.Vehiculo?.TipoCamioneta</p>
+                    <p style="margin:2px 0; color:#9ca3af; font-size:12px;">Registrado: @c.Usuario?.FechaRegistro.ToLocalTime().ToString("dd/MM/yyyy")</p>
+                </div>
+            </div>
+
+            <div class="fotos-vehiculo">
+                <div>
+                    <p class="etiqueta-foto">Foto frontal del vehículo</p>
+                    <img class="foto-vehiculo" src="@Model.UrlFoto(c.Vehiculo?.FotoFrontalUrl)" alt="Frontal" />
+                </div>
+                <div>
+                    <p class="etiqueta-foto">Foto lateral</p>
+                    <img class="foto-vehiculo" src="@Model.UrlFoto(c.Vehiculo?.FotoLateralUrl)" alt="Lateral" />
+                </div>
+                <div>
+                    <p class="etiqueta-foto">Cabina</p>
+                    <img class="foto-vehiculo" src="@Model.UrlFoto(c.Vehiculo?.FotoCabinaUrl)" alt="Cabina" />
+                </div>
+                <div>
+                    <p class="etiqueta-foto">Licencia (frontal)</p>
+                    <img class="foto-licencia" src="@Model.UrlFoto(c.FotoLicenciaFrontalUrl)" alt="Licencia" />
+                </div>
+            </div>
+
+            <div style="margin-top:12px;">
+                <form method="post" asp-page-handler="Aprobar" style="display:inline">
+                    <input type="hidden" name="id" value="@c.Id" />
+                    <button class="btn" type="submit">Aprobar</button>
+                </form>
+                <form method="post" asp-page-handler="Rechazar" style="display:inline">
+                    <input type="hidden" name="id" value="@c.Id" />
+                    <input type="text" name="motivo" placeholder="Motivo (opcional)" class="motivo-input" />
+                    <button class="btn btn-rechazar" type="submit">Rechazar</button>
+                </form>
+            </div>
+        </div>
+    }
+}

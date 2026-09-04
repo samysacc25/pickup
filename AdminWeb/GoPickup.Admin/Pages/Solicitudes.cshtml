@@ -1,0 +1,26 @@
+@page
+@model GoPickup.Admin.Pages.SolicitudesModel
+<h2>Envíos</h2>
+<table>
+    <thead>
+        <tr><th>Id</th><th>Cliente</th><th>Conductor</th><th>Origen</th><th>Destino</th><th>Carga</th><th>Pago</th><th>Estado</th><th>Tarifa</th><th>Recargo</th><th>Fecha</th></tr>
+    </thead>
+    <tbody>
+        @foreach (var s in Model.Solicitudes)
+        {
+            <tr>
+                <td>@s.Id</td>
+                <td>@s.Cliente?.NombreCompleto</td>
+                <td>@(s.Conductor?.Usuario?.NombreCompleto ?? "-")</td>
+                <td>@s.OrigenDireccion</td>
+                <td>@s.DestinoDireccion</td>
+                <td>@(s.LlevaCarga ? "Sí" : "No")</td>
+                <td>@s.MetodoPago</td>
+                <td>@s.Estado</td>
+                <td>$@((s.TarifaFinal ?? s.TarifaAcordada ?? s.TarifaSugerida).ToString("0.00"))</td>
+                <td>@(s.RecargoAplicado.HasValue ? $"${s.RecargoAplicado:0.00}" : "-")</td>
+                <td>@s.FechaSolicitud.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+            </tr>
+        }
+    </tbody>
+</table>

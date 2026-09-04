@@ -1,0 +1,36 @@
+@page
+@model GoPickup.Admin.Pages.ConductoresModel
+<h2>Conductores</h2>
+<table>
+    <thead>
+        <tr><th>Id</th><th>Nombre</th><th>Correo</th><th>Placa</th><th>Tipo</th><th>Calificación</th><th>Estado</th><th>Solicitud</th></tr>
+    </thead>
+    <tbody>
+        @foreach (var c in Model.Conductores)
+        {
+            <tr>
+                <td>@c.Id</td>
+                <td>@c.Usuario?.NombreCompleto</td>
+                <td>@c.Usuario?.Correo</td>
+                <td>@c.Vehiculo?.Placa</td>
+                <td>@c.Vehiculo?.TipoCamioneta</td>
+                <td>⭐ @c.CalificacionPromedio.ToString("0.0")</td>
+                <td>@c.Estado</td>
+                <td>
+                    @switch (c.EstadoSolicitud)
+                    {
+                        case EstadoSolicitudConductor.Aprobada:
+                            <span class="badge badge-ok">Aprobado</span>
+                            break;
+                        case EstadoSolicitudConductor.Rechazada:
+                            <span class="badge badge-inactivo">Rechazado</span>
+                            break;
+                        default:
+                            <span class="badge badge-pendiente">Pendiente</span>
+                            break;
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>

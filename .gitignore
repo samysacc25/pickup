@@ -1,0 +1,19 @@
+bin/
+obj/
+*.user
+.dart_tool/
+.packages
+build/
+**/android/.gradle
+**/android/local.properties
+**/ios/Pods/
+**/ios/Flutter/Flutter.podspec
+.flutter-plugins
+.flutter-plugins-dependencies
+.vs/
+.vscode/
+*.log
+
+# Credenciales sensibles - nunca subir
+Backend/GoPickup.API/firebase-credenciales.json
+**/google-services.json

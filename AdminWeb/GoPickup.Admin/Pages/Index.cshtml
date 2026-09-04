@@ -1,0 +1,33 @@
+@page
+@model GoPickup.Admin.Pages.IndexModel
+<h2>Dashboard</h2>
+<div class="tarjetas">
+    <div class="tarjeta"><h3>Clientes registrados</h3><p>@Model.TotalClientes</p></div>
+    <div class="tarjeta"><h3>Conductores</h3><p>@Model.TotalConductores</p></div>
+    <div class="tarjeta"><h3>Solicitudes de conductor pendientes</h3><p>@Model.SolicitudesConductorPendientes</p></div>
+    <div class="tarjeta"><h3>Conductores disponibles ahora</h3><p>@Model.ConductoresDisponibles</p></div>
+    <div class="tarjeta"><h3>Envíos hoy</h3><p>@Model.SolicitudesHoy</p></div>
+    <div class="tarjeta"><h3>Envíos en curso</h3><p>@Model.SolicitudesEnCurso</p></div>
+    <div class="tarjeta"><h3>Ingresos hoy</h3><p>$@Model.IngresosHoy.ToString("0.00")</p></div>
+</div>
+
+<h3>Últimos envíos</h3>
+<table>
+    <thead>
+        <tr><th>Id</th><th>Cliente</th><th>Conductor</th><th>Tipo</th><th>Estado</th><th>Tarifa</th><th>Fecha</th></tr>
+    </thead>
+    <tbody>
+        @foreach (var s in Model.UltimasSolicitudes)
+        {
+            <tr>
+                <td>@s.Id</td>
+                <td>@s.Cliente?.NombreCompleto</td>
+                <td>@(s.Conductor?.Usuario?.NombreCompleto ?? "-")</td>
+                <td>@(s.LlevaCarga ? "Con carga" : "Solo pasajero")</td>
+                <td>@s.Estado</td>
+                <td>@(s.TarifaFinal ?? s.TarifaAcordada ?? s.TarifaSugerida)</td>
+                <td>@s.FechaSolicitud.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+            </tr>
+        }
+    </tbody>
+</table>

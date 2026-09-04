@@ -1,0 +1,20 @@
+@page
+@model GoPickup.Admin.Pages.LoginModel
+@{
+    Layout = "_Layout";
+}
+<div class="login-box">
+    <div class="logo">
+        <span class="logo-go">GO</span><span class="logo-pickup">PICKUP</span>
+    </div>
+    <p style="color:#6b7280;font-size:13px;margin-top:-8px;">Panel de administración</p>
+    @if (!string.IsNullOrEmpty(Model.MensajeError))
+    {
+        <p class="error">@Model.MensajeError</p>
+    }
+    <form method="post">
+        <input type="email" name="correo" placeholder="Correo" required />
+        <input type="password" name="clave" placeholder="Contraseña" required />
+        <button type="submit">Ingresar</button>
+    </form>
+</div>

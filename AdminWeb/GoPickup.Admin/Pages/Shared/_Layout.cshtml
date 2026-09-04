@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Go Pickup - Administración</title>
+    <link rel="stylesheet" href="~/css/admin.css" />
+</head>
+<body>
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        <div class="layout">
+            <aside class="sidebar">
+                <div class="logo">
+                    <span class="logo-go">GO</span><span class="logo-pickup">PICKUP</span>
+                </div>
+                <nav>
+                    <a href="/Index">Dashboard</a>
+                    <a href="/ConductoresPendientes">Solicitudes de conductores</a>
+                    <a href="/Conductores">Conductores</a>
+                    <a href="/Clientes">Clientes</a>
+                    <a href="/Solicitudes">Envíos</a>
+                </nav>
+                <form method="post" action="/Logout" class="logout-form">
+                    <button type="submit">Cerrar sesión</button>
+                </form>
+            </aside>
+            <main class="contenido">
+                @RenderBody()
+            </main>
+        </div>
+    }
+    else
+    {
+        <main class="contenido-login">
+            @RenderBody()
+        </main>
+    }
+</body>
+</html>

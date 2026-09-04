@@ -1,0 +1,178 @@
+* { box-sizing: border-box; }
+
+:root {
+    --gp-verde: #3AAA35;
+    --gp-verde-oscuro: #2c8028;
+    --gp-blanco: #ffffff;
+    --gp-gris-texto: #1f2937;
+    --gp-gris-fondo: #f4f6f8;
+}
+
+body {
+    margin: 0;
+    font-family: 'Franklin Gothic Medium', 'Franklin Gothic', Arial, sans-serif;
+    background: var(--gp-gris-fondo);
+    color: var(--gp-gris-texto);
+}
+
+.layout { display: flex; min-height: 100vh; }
+
+.sidebar {
+    width: 240px;
+    background: var(--gp-verde);
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    padding: 24px 16px;
+}
+.logo { margin-bottom: 32px; line-height: 1; }
+.logo-go {
+    display: block;
+    font-size: 30px;
+    font-weight: 900;
+    font-style: italic;
+    color: #fff;
+    letter-spacing: 1px;
+}
+.logo-pickup {
+    display: block;
+    font-size: 20px;
+    font-weight: 900;
+    color: var(--gp-gris-fondo);
+    letter-spacing: 1px;
+}
+
+.sidebar nav { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.sidebar nav a {
+    color: #eafbe8;
+    text-decoration: none;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+}
+.sidebar nav a:hover { background: var(--gp-verde-oscuro); color: #fff; }
+
+.logout-form button {
+    width: 100%;
+    padding: 10px;
+    background: #1f2937;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.contenido { flex: 1; padding: 32px; }
+.contenido-login {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: linear-gradient(135deg, var(--gp-verde), var(--gp-verde-oscuro));
+}
+
+h2 { color: var(--gp-verde-oscuro); }
+
+.tarjetas { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+.tarjeta {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    min-width: 180px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    border-top: 4px solid var(--gp-verde);
+}
+.tarjeta h3 { margin: 0 0 8px; font-size: 13px; color: #6b7280; text-transform: uppercase; }
+.tarjeta p { margin: 0; font-size: 26px; font-weight: 900; color: var(--gp-verde-oscuro); }
+
+table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; }
+th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
+th { background: var(--gp-verde); color: #fff; font-weight: 700; }
+
+.badge { padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+.badge-ok { background: #dcfce7; color: #166534; }
+.badge-pendiente { background: #fef3c7; color: #92400e; }
+.badge-inactivo { background: #fee2e2; color: #991b1b; }
+
+.btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+    background: var(--gp-verde);
+}
+.btn-rechazar { background: #dc2626; }
+.btn + .btn { margin-left: 6px; }
+
+.login-box {
+    background: #fff;
+    padding: 40px;
+    border-radius: 16px;
+    width: 340px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    text-align: center;
+}
+.login-box .logo-go { color: var(--gp-verde); font-size: 40px; }
+.login-box .logo-pickup { color: var(--gp-verde-oscuro); font-size: 24px; }
+.login-box input {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+}
+.login-box button {
+    width: 100%;
+    padding: 10px;
+    background: var(--gp-verde);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 700;
+}
+.error { color: #dc2626; font-size: 13px; margin-bottom: 8px; }
+.motivo-input { width: 160px; padding: 4px 8px; border-radius: 6px; border: 1px solid #d1d5db; font-size: 12px; }
+
+.tarjeta-conductor {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+.tarjeta-conductor-header { display: flex; gap: 16px; align-items: flex-start; }
+.foto-perfil {
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid var(--gp-verde);
+    flex-shrink: 0;
+    background: #f4f6f8;
+}
+.fotos-vehiculo {
+    display: flex;
+    gap: 16px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+}
+.etiqueta-foto { font-size: 12px; color: #6b7280; margin: 0 0 4px; font-weight: 600; }
+.foto-vehiculo {
+    width: 180px; height: 130px;
+    object-fit: cover;
+    border-radius: 10px;
+    border: 1px solid #e5e7eb;
+    background: #f4f6f8;
+}
+.foto-licencia {
+    width: 220px; height: 140px;
+    object-fit: contain;
+    border-radius: 10px;
+    border: 1px solid #e5e7eb;
+    background: #f4f6f8;
+}

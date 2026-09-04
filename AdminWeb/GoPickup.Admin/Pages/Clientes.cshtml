@@ -1,0 +1,37 @@
+@page
+@model GoPickup.Admin.Pages.ClientesModel
+<h2>Clientes</h2>
+<table>
+    <thead>
+        <tr><th>Id</th><th>Nombre</th><th>Correo</th><th>Teléfono</th><th>Recargo pendiente</th><th>Registro</th><th>Estado</th><th>Acciones</th></tr>
+    </thead>
+    <tbody>
+        @foreach (var u in Model.Clientes)
+        {
+            <tr>
+                <td>@u.Id</td>
+                <td>@u.NombreCompleto</td>
+                <td>@u.Correo</td>
+                <td>@u.Telefono</td>
+                <td>@(u.RecargoPendiente > 0 ? $"${u.RecargoPendiente:0.00}" : "-")</td>
+                <td>@u.FechaRegistro.ToLocalTime().ToString("dd/MM/yyyy")</td>
+                <td>
+                    @if (u.Activo)
+                    {
+                        <span class="badge badge-ok">Activo</span>
+                    }
+                    else
+                    {
+                        <span class="badge badge-inactivo">Inactivo</span>
+                    }
+                </td>
+                <td>
+                    <form method="post" asp-page-handler="@(u.Activo ? "Desactivar" : "Activar")" style="display:inline">
+                        <input type="hidden" name="id" value="@u.Id" />
+                        <button class="btn" type="submit">@(u.Activo ? "Desactivar" : "Activar")</button>
+                    </form>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
