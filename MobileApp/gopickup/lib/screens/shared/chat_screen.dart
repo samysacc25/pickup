@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../theme/go_pickup_theme.dart';
 import '../../services/solicitud_hub_service.dart';
@@ -31,6 +32,16 @@ class _ChatScreenState extends State<ChatScreen> {
   final _mensajeCtrl = TextEditingController();
   final _scrollController = ScrollController();
   bool _enviando = false;
+  StreamSubscription<MensajeChat>? _subMensajes;
+
+  @override
+  void initState() {
+    super.initState();
+    // Nos suscribimos al stream de mensajes del hub (la conexión ya la abrió
+    // la pantalla anterior). Antes nadie llamaba a agregarMensajeRecibido,
+    // así que los mensajes del otro participante nunca aparecían aquí.
+    _subMensajes = widget.hubService.mensajesChat.listen(agregarMensajeRecibido);
+  }
 
   void agregarMensajeRecibido(MensajeChat mensaje) {
     if (!mounted) return;
@@ -75,6 +86,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _subMensajes?.cancel();
     _mensajeCtrl.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -85,16 +97,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.nombreOtraPersona),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(20),
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Text(
-              'Este chat no se guarda — es solo mientras dura el servicio',
-              style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.85)),
-            ),
-          ),
-        ),
       ),
       body: Column(
         children: [

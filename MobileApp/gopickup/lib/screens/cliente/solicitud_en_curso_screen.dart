@@ -25,6 +25,7 @@ class _SolicitudEnCursoScreenState extends State<SolicitudEnCursoScreen> {
   late final SolicitudService _solicitudService;
   late final SolicitudHubService _hubService;
   Timer? _timerRespaldo;
+  StreamSubscription<void>? _subConductorLlego;
 
   BitmapDescriptor? _iconoCamioneta;
   Solicitud? _solicitud;
@@ -40,6 +41,10 @@ class _SolicitudEnCursoScreenState extends State<SolicitudEnCursoScreen> {
     _cargarIconoCamioneta();
     _cargarSolicitud();
     _conectarTiempoReal();
+    _subConductorLlego = _hubService.conductorLlego.listen((_) {
+      if (!mounted) return;
+      mostrarExito(context, 'Tu conductor ya llegó al punto de recogida.');
+    });
     _timerRespaldo = Timer.periodic(const Duration(seconds: 8), (_) => _cargarSolicitud());
   }
 
@@ -132,7 +137,9 @@ class _SolicitudEnCursoScreenState extends State<SolicitudEnCursoScreen> {
   @override
   void dispose() {
     _timerRespaldo?.cancel();
+    _subConductorLlego?.cancel();
     _hubService.desconectar();
+    _hubService.dispose();
     super.dispose();
   }
 
@@ -224,7 +231,10 @@ class _SolicitudEnCursoScreenState extends State<SolicitudEnCursoScreen> {
                       ),
                       IconButton(icon: const Icon(Icons.chat_bubble_outline, color: GoPickupColors.verde), onPressed: _abrirChat),
                       if (solicitud.conductorTelefono != null)
-                        IconButton(icon: const Icon(Icons.phone, color: Colors.green), onPressed: () {}),
+                        IconButton(
+                          icon: const Icon(Icons.phone, color: Colors.green),
+                          onPressed: () => llamarA(context, solicitud.conductorTelefono),
+                        ),
                     ],
                   ),
                   const SizedBox(height: 12),

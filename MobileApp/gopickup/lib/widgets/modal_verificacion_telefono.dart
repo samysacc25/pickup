@@ -59,7 +59,7 @@ class _ModalVerificacionTelefonoState extends State<_ModalVerificacionTelefono> 
         _codigoDesarrollo = codigoDesarrollo;
         _error = (smsEnviado || codigoDesarrollo != null)
             ? null
-            : 'No se pudo enviar el SMS. Revisa la configuración de Twilio en el backend.';
+            : 'No se pudo enviar el SMS. Intenta de nuevo en unos minutos.';
       });
       _iniciarContadorReenvio();
     } catch (e) {
@@ -137,9 +137,9 @@ class _ModalVerificacionTelefonoState extends State<_ModalVerificacionTelefono> 
                 children: [
                   const Row(
                     children: [
-                      Icon(Icons.construction, size: 16, color: Colors.orange),
+                      Icon(Icons.sms_outlined, size: 16, color: Colors.orange),
                       SizedBox(width: 6),
-                      Text('Modo desarrollo (Twilio no configurado)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange)),
+                      Text('Código de verificación', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange)),
                     ],
                   ),
                   const SizedBox(height: 8),

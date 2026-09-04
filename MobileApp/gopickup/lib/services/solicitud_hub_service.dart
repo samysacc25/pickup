@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:signalr_netcore/hub_connection.dart';
 import 'package:signalr_netcore/hub_connection_builder.dart';
 import '../config/api_config.dart';
@@ -15,13 +16,28 @@ class SolicitudHubService {
   final String token;
   HubConnection? _conexion;
 
+  // Los mensajes de chat se retransmiten por este stream sin importar si en
+  // el momento de conectar (conectarYUnirse) ya existía o no una pantalla de
+  // chat abierta escuchando. Antes el listener de 'mensajeChatRecibido' solo
+  // se registraba si se pasaba el callback alRecibirMensajeChat, pero las
+  // pantallas que abren la conexión (SolicitudEnCursoScreen /
+  // ServicioEnCursoConductorScreen) nunca lo pasaban -- por eso el chat nunca
+  // mostraba los mensajes entrantes. Ahora el hub siempre escucha el evento y
+  // lo publica aquí; la pantalla de chat se suscribe cuando se abre.
+  final _mensajesChatController = StreamController<MensajeChat>.broadcast();
+  Stream<MensajeChat> get mensajesChat => _mensajesChatController.stream;
+
+  // Aviso en tiempo real de que el conductor ya llegó al punto de recogida
+  // (ver ConductoresController.ActualizarUbicacion en el backend).
+  final _conductorLlegoController = StreamController<void>.broadcast();
+  Stream<void> get conductorLlego => _conductorLlegoController.stream;
+
   SolicitudHubService(this.token);
 
   Future<void> conectarYUnirse({
     required int solicitudId,
     required void Function(Solicitud solicitud) alActualizarSolicitud,
     required void Function(double lat, double lng) alActualizarUbicacion,
-    void Function(MensajeChat mensaje)? alRecibirMensajeChat,
   }) async {
     _conexion = HubConnectionBuilder()
         .withUrl('${ApiConfig.hubUrl}?access_token=$token')
@@ -40,17 +56,19 @@ class SolicitudHubService {
       }
     });
 
-    if (alRecibirMensajeChat != null) {
-      _conexion!.on('mensajeChatRecibido', (args) {
-        if (args != null && args.length >= 3) {
-          alRecibirMensajeChat(MensajeChat(
-            remitente: args[0] as String,
-            texto: args[1] as String,
-            fecha: DateTime.tryParse(args[2] as String) ?? DateTime.now(),
-          ));
-        }
-      });
-    }
+    _conexion!.on('mensajeChatRecibido', (args) {
+      if (args != null && args.length >= 3) {
+        _mensajesChatController.add(MensajeChat(
+          remitente: args[0] as String,
+          texto: args[1] as String,
+          fecha: DateTime.tryParse(args[2] as String) ?? DateTime.now(),
+        ));
+      }
+    });
+
+    _conexion!.on('conductorLlegoAlPunto', (_) {
+      _conductorLlegoController.add(null);
+    });
 
     await _conexion!.start();
     await _conexion!.invoke('UnirseASolicitud', args: [solicitudId]);
@@ -98,5 +116,10 @@ class SolicitudHubService {
       await _conexion?.invoke('SalirComoConductorDisponible');
     } catch (_) {}
     await _conexion?.stop();
+  }
+
+  void dispose() {
+    _mensajesChatController.close();
+    _conductorLlegoController.close();
   }
 }

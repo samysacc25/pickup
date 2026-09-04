@@ -72,7 +72,7 @@ namespace GoPickup.API.Controllers
                 return Ok(new
                 {
                     mensaje = _entorno.IsDevelopment()
-                        ? "Modo desarrollo: Twilio no está configurado. Usa el código mostrado abajo."
+                        ? "Código de verificación generado."
                         : "No se pudo enviar el código de verificación. Intenta de nuevo más tarde.",
                     smsEnviado = false,
                     codigoDesarrollo = _entorno.IsDevelopment() ? codigo : null

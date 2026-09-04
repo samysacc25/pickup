@@ -125,6 +125,7 @@ class _ServicioEnCursoConductorScreenState extends State<ServicioEnCursoConducto
   void dispose() {
     _timerUbicacion?.cancel();
     _hubService.desconectar();
+    _hubService.dispose();
     super.dispose();
   }
 
@@ -178,7 +179,11 @@ class _ServicioEnCursoConductorScreenState extends State<ServicioEnCursoConducto
                   Text(s.clienteNombre),
                   const Spacer(),
                   IconButton(icon: const Icon(Icons.chat_bubble_outline, color: GoPickupColors.verde), onPressed: _abrirChat),
-                  if (s.clienteTelefono != null) IconButton(icon: const Icon(Icons.phone, color: Colors.green), onPressed: () {}),
+                  if (s.clienteTelefono != null)
+                    IconButton(
+                      icon: const Icon(Icons.phone, color: Colors.green),
+                      onPressed: () => llamarA(context, s.clienteTelefono),
+                    ),
                 ]),
                 const SizedBox(height: 4),
                 Text(s.llevaCarga ? (s.descripcionCarga ?? 'Con carga adicional') : 'Transporte de pasajero', style: const TextStyle(color: Colors.grey, fontSize: 13)),

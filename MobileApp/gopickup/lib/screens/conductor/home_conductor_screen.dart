@@ -36,7 +36,19 @@ class _HomeConductorScreenState extends State<HomeConductorScreen> {
 
   bool _disponible = false;
   bool _cambiandoDisponibilidad = false;
-  bool _dialogoAbierto = false;
+
+  // Al conductor le pueden llegar varias solicitudes al mismo tiempo (por
+  // ejemplo dos clientes pidiendo un viaje casi a la vez). Antes solo se
+  // mostraba un diálogo bloqueante para la primera y las demás se perdían en
+  // silencio mientras ese diálogo seguía abierto. Ahora se muestran todas
+  // como tarjetas apiladas, cada una con su propio contador y sus propios
+  // botones de Aceptar/Rechazar.
+  final List<Solicitud> _solicitudesEntrantes = [];
+
+  // Una vez que el conductor acepta un viaje, no debe seguir recibiendo
+  // ofertas nuevas mientras esa pantalla de Home (que sigue viva debajo de
+  // la pantalla del servicio en curso) siga escuchando en segundo plano.
+  bool _tieneViajeActivo = false;
 
   static const CameraPosition _posicionInicial = CameraPosition(
     target: LatLng(-1.2417, -78.6197),
@@ -114,7 +126,6 @@ class _HomeConductorScreenState extends State<HomeConductorScreen> {
         if (!_solicitudesYaMostradas.contains(s.id)) {
           _solicitudesYaMostradas.add(s.id);
           _mostrarSolicitudEntrante(s);
-          break;
         }
       }
     } catch (_) {}
@@ -130,36 +141,36 @@ class _HomeConductorScreenState extends State<HomeConductorScreen> {
   }
 
   void _mostrarSolicitudEntrante(Solicitud solicitud) {
-    if (_dialogoAbierto || !mounted) return;
-    _dialogoAbierto = true;
+    if (!mounted || _tieneViajeActivo) return;
+    if (_solicitudesEntrantes.any((s) => s.id == solicitud.id)) return;
+    setState(() => _solicitudesEntrantes.add(solicitud));
+  }
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => _DialogoNuevaSolicitud(
-        solicitud: solicitud,
-        onRechazar: () {
-          _dialogoAbierto = false;
-          Navigator.of(context).pop();
-        },
-        onAceptar: () async {
-          try {
-            final actualizada = await _solicitudService.aceptarSolicitud(solicitud.id);
-            _dialogoAbierto = false;
-            if (mounted) Navigator.of(context).pop();
-            if (mounted) {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => ServicioEnCursoConductorScreen(sesion: widget.sesion, solicitudId: actualizada.id)),
-              );
-            }
-          } catch (e) {
-            _dialogoAbierto = false;
-            if (mounted) Navigator.of(context).pop();
-            if (mounted) mostrarError(context, textoError(e));
-          }
-        },
-      ),
-    ).then((_) => _dialogoAbierto = false);
+  void _quitarSolicitudEntrante(int solicitudId) {
+    if (!mounted) return;
+    setState(() => _solicitudesEntrantes.removeWhere((s) => s.id == solicitudId));
+  }
+
+  Future<void> _aceptarSolicitudEntrante(Solicitud solicitud) async {
+    try {
+      final actualizada = await _solicitudService.aceptarSolicitud(solicitud.id);
+      if (!mounted) return;
+      // Ya aceptó un viaje: se quitan todas las demás ofertas pendientes y se
+      // deja de mostrar nuevas mientras dure este servicio.
+      setState(() {
+        _tieneViajeActivo = true;
+        _solicitudesEntrantes.clear();
+      });
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => ServicioEnCursoConductorScreen(sesion: widget.sesion, solicitudId: actualizada.id)),
+      );
+      if (mounted) setState(() => _tieneViajeActivo = false);
+    } catch (e) {
+      if (mounted) {
+        _quitarSolicitudEntrante(solicitud.id);
+        mostrarError(context, textoError(e));
+      }
+    }
   }
 
   Future<void> _cerrarSesion() async {
@@ -176,6 +187,7 @@ class _HomeConductorScreenState extends State<HomeConductorScreen> {
     _timerUbicacion?.cancel();
     _timerSolicitudesDisponibles?.cancel();
     _hubService.desconectar();
+    _hubService.dispose();
     super.dispose();
   }
 
@@ -197,6 +209,32 @@ class _HomeConductorScreenState extends State<HomeConductorScreen> {
                 ? {}
                 : {Marker(markerId: const MarkerId('yo'), position: LatLng(_posicionActual!.latitude, _posicionActual!.longitude))},
           ),
+          if (_solicitudesEntrantes.isNotEmpty)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: _solicitudesEntrantes
+                        .map((s) => Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: _TarjetaSolicitudEntrante(
+                                key: ValueKey(s.id),
+                                solicitud: s,
+                                onExpirar: () => _quitarSolicitudEntrante(s.id),
+                                onRechazar: () => _quitarSolicitudEntrante(s.id),
+                                onAceptar: () => _aceptarSolicitudEntrante(s),
+                              ),
+                            ))
+                        .toList(),
+                  ),
+                ),
+              ),
+            ),
           Positioned(
             left: 0,
             right: 0,
@@ -227,19 +265,31 @@ class _HomeConductorScreenState extends State<HomeConductorScreen> {
   }
 }
 
-class _DialogoNuevaSolicitud extends StatefulWidget {
+// Tarjeta compacta y apilable para una solicitud entrante. A diferencia del
+// diálogo anterior, varias de estas pueden mostrarse al mismo tiempo (una
+// debajo de otra) cuando llegan varias solicitudes juntas -- cada una con su
+// propio contador regresivo y sus propios botones.
+class _TarjetaSolicitudEntrante extends StatefulWidget {
   final Solicitud solicitud;
   final VoidCallback onAceptar;
   final VoidCallback onRechazar;
+  final VoidCallback onExpirar;
 
-  const _DialogoNuevaSolicitud({required this.solicitud, required this.onAceptar, required this.onRechazar});
+  const _TarjetaSolicitudEntrante({
+    super.key,
+    required this.solicitud,
+    required this.onAceptar,
+    required this.onRechazar,
+    required this.onExpirar,
+  });
 
   @override
-  State<_DialogoNuevaSolicitud> createState() => _DialogoNuevaSolicitudState();
+  State<_TarjetaSolicitudEntrante> createState() => _TarjetaSolicitudEntranteState();
 }
 
-class _DialogoNuevaSolicitudState extends State<_DialogoNuevaSolicitud> {
-  int _segundosRestantes = 25;
+class _TarjetaSolicitudEntranteState extends State<_TarjetaSolicitudEntrante> {
+  static const int _segundosTotales = 25;
+  int _segundosRestantes = _segundosTotales;
   Timer? _timer;
   bool _procesando = false;
 
@@ -249,7 +299,7 @@ class _DialogoNuevaSolicitudState extends State<_DialogoNuevaSolicitud> {
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (_segundosRestantes <= 1) {
         t.cancel();
-        if (!_procesando) widget.onRechazar();
+        if (!_procesando) widget.onExpirar();
       } else {
         setState(() => _segundosRestantes--);
       }
@@ -266,70 +316,96 @@ class _DialogoNuevaSolicitudState extends State<_DialogoNuevaSolicitud> {
   Widget build(BuildContext context) {
     final s = widget.solicitud;
     final tarifa = s.tarifaPropuestaCliente ?? s.tarifaSugerida;
+    final progreso = _segundosRestantes / _segundosTotales;
 
-    return PopScope(
-      canPop: false,
-      child: Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.local_shipping, color: GoPickupColors.verde, size: 28),
-                  const SizedBox(width: 8),
-                  const Expanded(child: Text('¡Nueva solicitud!', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
-                  Text('$_segundosRestantes s', style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(children: [
-                const Icon(Icons.circle, size: 10, color: GoPickupColors.verde),
+    return Material(
+      elevation: 6,
+      borderRadius: BorderRadius.circular(16),
+      color: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('\$${tarifa.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: GoPickupColors.verdeOscuro)),
                 const SizedBox(width: 8),
-                Expanded(child: Text(s.origenDireccion, maxLines: 2, overflow: TextOverflow.ellipsis)),
-              ]),
-              const SizedBox(height: 6),
-              Row(children: [
-                const Icon(Icons.location_on, size: 14, color: Colors.red),
-                const SizedBox(width: 6),
-                Expanded(child: Text(s.destinoDireccion, maxLines: 2, overflow: TextOverflow.ellipsis)),
-              ]),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                children: [
-                  Chip(label: Text(s.llevaCarga ? 'Con carga adicional' : 'Solo pasajero')),
-                  if (s.distanciaKm != null) Chip(label: Text('${s.distanciaKm!.toStringAsFixed(1)} km')),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Text('\$${tarifa.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24, color: GoPickupColors.verdeOscuro)),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _procesando ? null : () { setState(() => _procesando = true); widget.onRechazar(); },
-                      style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
-                      child: const Text('Rechazar'),
-                    ),
+                Text('$_segundosRestantes s', style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600)),
+                const Spacer(),
+                if (s.distanciaKm != null)
+                  Chip(
+                    label: Text('${s.distanciaKm!.toStringAsFixed(1)} km', style: const TextStyle(fontSize: 12)),
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _procesando ? null : () { setState(() => _procesando = true); widget.onAceptar(); },
-                      child: _procesando
-                          ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Text('Aceptar'),
-                    ),
-                  ),
-                ],
+              ],
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: progreso,
+                minHeight: 4,
+                backgroundColor: Colors.grey.shade200,
+                valueColor: AlwaysStoppedAnimation<Color>(progreso > 0.3 ? GoPickupColors.verde : Colors.red),
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const CircleAvatar(radius: 16, backgroundColor: GoPickupColors.verde, child: Icon(Icons.person, color: Colors.white, size: 18)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(s.clienteNombre, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                      Text(
+                        s.llevaCarga ? (s.descripcionCarga ?? 'Con carga adicional') : 'Solo pasajero',
+                        style: const TextStyle(color: Colors.grey, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(children: [
+              const Icon(Icons.circle, size: 9, color: GoPickupColors.verde),
+              const SizedBox(width: 6),
+              Expanded(child: Text(s.origenDireccion, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
+            ]),
+            const SizedBox(height: 4),
+            Row(children: [
+              const Icon(Icons.location_on, size: 13, color: Colors.red),
+              const SizedBox(width: 6),
+              Expanded(child: Text(s.destinoDireccion, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
+            ]),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _procesando ? null : () { setState(() => _procesando = true); widget.onRechazar(); },
+                    style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
+                    child: const Text('Rechazar'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _procesando ? null : () { setState(() => _procesando = true); widget.onAceptar(); },
+                    style: ElevatedButton.styleFrom(backgroundColor: GoPickupColors.verde),
+                    child: _procesando
+                        ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Text('Aceptar'),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
