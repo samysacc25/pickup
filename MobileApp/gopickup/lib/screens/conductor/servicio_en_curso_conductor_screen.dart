@@ -176,8 +176,7 @@ class _ServicioEnCursoConductorScreenState extends State<ServicioEnCursoConducto
                 Row(children: [
                   const Icon(Icons.person_outline, size: 18, color: Colors.grey),
                   const SizedBox(width: 6),
-                  Text(s.clienteNombre),
-                  const Spacer(),
+                  Expanded(child: Text(s.clienteNombre, maxLines: 1, overflow: TextOverflow.ellipsis)),
                   IconButton(icon: const Icon(Icons.chat_bubble_outline, color: GoPickupColors.verde), onPressed: _abrirChat),
                   if (s.clienteTelefono != null)
                     IconButton(
@@ -185,6 +184,14 @@ class _ServicioEnCursoConductorScreenState extends State<ServicioEnCursoConducto
                       onPressed: () => llamarA(context, s.clienteTelefono),
                     ),
                 ]),
+                if (s.clienteCedula != null && s.clienteCedula!.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(children: [
+                    const Icon(Icons.badge_outlined, size: 16, color: Colors.grey),
+                    const SizedBox(width: 6),
+                    Text('Cédula: ${s.clienteCedula}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                  ]),
+                ],
                 const SizedBox(height: 4),
                 Text(s.llevaCarga ? (s.descripcionCarga ?? 'Con carga adicional') : 'Transporte de pasajero', style: const TextStyle(color: Colors.grey, fontSize: 13)),
                 const SizedBox(height: 8),

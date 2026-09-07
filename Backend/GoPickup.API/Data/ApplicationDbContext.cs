@@ -12,6 +12,7 @@ namespace GoPickup.API.Data
         public DbSet<Vehiculo> Vehiculos => Set<Vehiculo>();
         public DbSet<Solicitud> Solicitudes => Set<Solicitud>();
         public DbSet<CodigoVerificacionTelefono> CodigosVerificacionTelefono => Set<CodigoVerificacionTelefono>();
+        public DbSet<MensajeChatSolicitud> MensajesChat => Set<MensajeChatSolicitud>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -51,6 +52,14 @@ namespace GoPickup.API.Data
             modelBuilder.Entity<Solicitud>().Property(s => s.TarifaAcordada).HasColumnType("decimal(10,2)");
             modelBuilder.Entity<Solicitud>().Property(s => s.TarifaFinal).HasColumnType("decimal(10,2)");
             modelBuilder.Entity<Solicitud>().Property(s => s.RecargoAplicado).HasColumnType("decimal(10,2)");
+
+            modelBuilder.Entity<MensajeChatSolicitud>()
+                .HasOne(m => m.Solicitud)
+                .WithMany()
+                .HasForeignKey(m => m.SolicitudId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<MensajeChatSolicitud>().HasIndex(m => m.SolicitudId);
         }
     }
 }

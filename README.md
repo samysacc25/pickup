@@ -13,7 +13,7 @@ GoPickupProyecto/
 
 ## Últimos 7 ajustes incluidos en esta versión
 
-1. **Tarifa**: `$0.50 por km` (solo pasajero) o `$0.80 por km` (con carga adicional) — sin tarifa base fija
+1. **Tarifa**: banderazo (`$0.42` día / `$0.46` noche) + `$0.55 por km` (solo pasajero) o `$0.90 por km` (con carga adicional), con un mínimo de `$1.45` por viaje
 2. **Recargo por cancelación**: si el cliente cancela después de que un conductor ya aceptó, se le cobra `$0.40` automáticamente en su **próxima** solicitud
 3. **Foto frontal de la licencia** de conducir, obligatoria en el registro de conductor
 4. **Nombre de calle real** al elegir ubicación (ya no muestra "Plus Codes" tipo `Q99H+FX2`)
@@ -46,7 +46,7 @@ dotnet restore
 ### 2.1 Configura appsettings.json
 - `ConnectionStrings:DefaultConnection`: tu SQL Server local
 - `Jwt:Key`: cambia por una clave propia de al menos 32 caracteres
-- `Tarifas:TarifaPorKmSinCarga` / `TarifaPorKmConCarga`: ya vienen en 0.50 y 0.80
+- `Tarifas:TarifaPorKmSinCarga` / `TarifaPorKmConCarga`: ya vienen en 0.55 y 0.90 (más banderazo y tarifa mínima, ver sección de `Tarifas` en `appsettings.json`)
 - `Twilio` y `Firebase`: pueden quedar vacíos para desarrollo (ver notas abajo)
 
 ### 2.2 Crea la base de datos

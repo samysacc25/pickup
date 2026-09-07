@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/go_pickup_theme.dart';
+import '../../theme/responsive.dart';
 import '../../models/usuario.dart';
 import '../../services/auth_service.dart';
 import '../login_screen.dart';
@@ -13,8 +14,11 @@ class PendienteAprobacionScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // SingleChildScrollView evita que el mensaje se corte en pantallas
+      // pequeñas cuando el texto no cabe entero en la altura disponible.
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
+          child: ContenedorResponsivo(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -42,6 +46,7 @@ class PendienteAprobacionScreen extends StatelessWidget {
                 child: const Text('Cerrar sesión'),
               ),
             ],
+          ),
           ),
         ),
       ),

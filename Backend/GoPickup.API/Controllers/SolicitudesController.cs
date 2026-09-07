@@ -177,6 +177,7 @@ namespace GoPickup.API.Controllers
             if (solicitud.Conductor is not null)
                 solicitud.Conductor.Estado = EstadoConductor.Disponible;
 
+            await BorrarHistorialChatAsync(id);
             await _db.SaveChangesAsync();
             await _hub.Clients.Group($"solicitud-{solicitud.Id}").SendAsync("solicitudActualizada", await ObtenerRespuesta(solicitud.Id));
 
@@ -210,6 +211,7 @@ namespace GoPickup.API.Controllers
             if (solicitud.Conductor is not null)
                 solicitud.Conductor.Estado = EstadoConductor.Disponible;
 
+            await BorrarHistorialChatAsync(id);
             await _db.SaveChangesAsync();
             await _hub.Clients.Group($"solicitud-{solicitud.Id}").SendAsync("solicitudActualizada", await ObtenerRespuesta(solicitud.Id));
 
@@ -269,8 +271,9 @@ namespace GoPickup.API.Controllers
             return NoContent();
         }
 
-        // Chat interno: NO se guarda nada en base de datos, solo se retransmite
-        // en vivo al otro participante de la solicitud (cliente <-> conductor).
+        // Respaldo por HTTP del envío de chat (además de SignalR). El mensaje
+        // se guarda mientras la solicitud sigue activa -- se borra al
+        // finalizar o cancelarse (ver FinalizarSolicitud / CancelarSolicitud).
         [HttpPost("{id}/mensaje-chat")]
         public async Task<IActionResult> EnviarMensajeChat(int id, EnviarMensajeChatDto dto)
         {
@@ -278,9 +281,32 @@ namespace GoPickup.API.Controllers
             if (solicitud is null) return NotFound();
 
             var remitente = User.IsInRole("Conductor") ? "conductor" : "cliente";
-            await _hub.Clients.Group($"solicitud-{id}").SendAsync("mensajeChatRecibido", remitente, dto.Mensaje, DateTime.UtcNow.ToString("o"));
+            var fecha = DateTime.UtcNow;
+
+            _db.MensajesChat.Add(new MensajeChatSolicitud { SolicitudId = id, Remitente = remitente, Texto = dto.Mensaje, Fecha = fecha });
+            await _db.SaveChangesAsync();
+
+            await _hub.Clients.Group($"solicitud-{id}").SendAsync("mensajeChatRecibido", remitente, dto.Mensaje, fecha.ToString("o"));
 
             return NoContent();
+        }
+
+        // Historial de chat de la solicitud, mientras siga activa. La
+        // pantalla de chat lo consulta al abrirse para no perder los
+        // mensajes si el usuario había navegado fuera y vuelve a entrar.
+        [HttpGet("{id}/mensajes-chat")]
+        public async Task<ActionResult<List<MensajeChatRespuestaDto>>> ObtenerMensajesChat(int id)
+        {
+            var existe = await _db.Solicitudes.AnyAsync(s => s.Id == id);
+            if (!existe) return NotFound();
+
+            var mensajes = await _db.MensajesChat
+                .Where(m => m.SolicitudId == id)
+                .OrderBy(m => m.Fecha)
+                .Select(m => new MensajeChatRespuestaDto { Remitente = m.Remitente, Texto = m.Texto, Fecha = m.Fecha })
+                .ToListAsync();
+
+            return Ok(mensajes);
         }
 
         private async Task<IActionResult> CambiarEstado(int id, EstadoSolicitud nuevoEstado, bool marcarInicio = false)
@@ -300,6 +326,14 @@ namespace GoPickup.API.Controllers
                 await NotificarClientePorPush(solicitud.ClienteId, "Servicio iniciado", "Tu viaje está en camino al destino.", solicitud.Id);
 
             return Ok(await ObtenerRespuesta(solicitud.Id));
+        }
+
+        // El chat se guarda solo mientras la solicitud está activa; al
+        // terminar (finalizada o cancelada) se borra el historial.
+        private async Task BorrarHistorialChatAsync(int solicitudId)
+        {
+            var mensajes = await _db.MensajesChat.Where(m => m.SolicitudId == solicitudId).ToListAsync();
+            if (mensajes.Count > 0) _db.MensajesChat.RemoveRange(mensajes);
         }
 
         private async Task NotificarClientePorPush(int clienteId, string titulo, string cuerpo, int solicitudId)
@@ -323,6 +357,7 @@ namespace GoPickup.API.Controllers
                 Estado = s.Estado,
                 ClienteNombre = s.Cliente?.NombreCompleto ?? string.Empty,
                 ClienteTelefono = s.Cliente?.Telefono,
+                ClienteCedula = s.Cliente?.NumeroCedula,
                 ConductorId = s.ConductorId,
                 ConductorNombre = s.Conductor?.Usuario?.NombreCompleto,
                 ConductorTelefono = s.Conductor?.Usuario?.Telefono,

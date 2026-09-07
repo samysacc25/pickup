@@ -7,6 +7,7 @@ import '../services/archivo_service.dart';
 import '../services/validadores.dart';
 import '../widgets/notificacion.dart';
 import '../widgets/selector_foto.dart';
+import '../widgets/campo_clave.dart';
 import '../widgets/modal_verificacion_telefono.dart';
 import 'cliente/home_cliente_screen.dart';
 
@@ -23,6 +24,7 @@ class _RegistroClienteScreenState extends State<RegistroClienteScreen> {
   final _correoCtrl = TextEditingController();
   final _telefonoCtrl = TextEditingController();
   final _claveCtrl = TextEditingController();
+  final _cedulaCtrl = TextEditingController();
   final _authService = AuthService();
 
   File? _fotoPerfil;
@@ -63,6 +65,7 @@ class _RegistroClienteScreenState extends State<RegistroClienteScreen> {
         correo: _correoCtrl.text.trim(),
         telefono: _telefonoCtrl.text.trim(),
         clave: _claveCtrl.text,
+        numeroCedula: _cedulaCtrl.text.trim(),
       );
 
       if (_fotoPerfil != null) {
@@ -139,9 +142,20 @@ class _RegistroClienteScreenState extends State<RegistroClienteScreen> {
                   ),
                 const SizedBox(height: 12),
                 TextFormField(
+                  controller: _cedulaCtrl,
+                  keyboardType: TextInputType.number,
+                  maxLength: 10,
+                  decoration: const InputDecoration(
+                    labelText: 'Número de cédula',
+                    prefixIcon: Icon(Icons.badge_outlined),
+                    counterText: '',
+                    helperText: 'Para la seguridad del conductor',
+                  ),
+                  validator: (v) => !esCedulaEcuatorianaValida(v) ? 'Ingresa una cédula ecuatoriana válida' : null,
+                ),
+                const SizedBox(height: 12),
+                CampoClave(
                   controller: _claveCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Contraseña', prefixIcon: Icon(Icons.lock_outline)),
                   validator: (v) => (v == null || v.length < 6) ? 'Mínimo 6 caracteres' : null,
                 ),
                 const SizedBox(height: 24),

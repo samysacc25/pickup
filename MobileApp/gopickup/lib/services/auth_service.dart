@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'api_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 import '../models/usuario.dart';
@@ -12,8 +13,9 @@ class AuthService {
     required String correo,
     required String telefono,
     required String clave,
+    required String numeroCedula,
   }) async {
-    final respuesta = await http.post(
+    final respuesta = await ApiClient.post(
       Uri.parse('${ApiConfig.baseUrl}/auth/registro/cliente'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
@@ -21,6 +23,7 @@ class AuthService {
         'correo': correo,
         'telefono': telefono,
         'clave': clave,
+        'numeroCedula': numeroCedula,
       }),
     );
     return _procesarRespuestaAuth(respuesta);
@@ -41,7 +44,7 @@ class AuthService {
     required TipoCamioneta tipoCamioneta,
     String? descripcionCapacidad,
   }) async {
-    final respuesta = await http.post(
+    final respuesta = await ApiClient.post(
       Uri.parse('${ApiConfig.baseUrl}/auth/registro/conductor'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
@@ -64,7 +67,7 @@ class AuthService {
   }
 
   Future<SesionUsuario> iniciarSesion({required String correo, required String clave}) async {
-    final respuesta = await http.post(
+    final respuesta = await ApiClient.post(
       Uri.parse('${ApiConfig.baseUrl}/auth/login'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'correo': correo, 'clave': clave}),

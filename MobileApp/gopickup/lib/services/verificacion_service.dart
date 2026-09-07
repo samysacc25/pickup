@@ -1,10 +1,10 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'api_client.dart';
 import '../config/api_config.dart';
 
 class VerificacionService {
   Future<Map<String, dynamic>> enviarCodigo(String telefono) async {
-    final respuesta = await http.post(
+    final respuesta = await ApiClient.post(
       Uri.parse('${ApiConfig.baseUrl}/verificacion/enviar-codigo'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'telefono': telefono}),
@@ -23,7 +23,7 @@ class VerificacionService {
   }
 
   Future<void> confirmarCodigo(String telefono, String codigo) async {
-    final respuesta = await http.post(
+    final respuesta = await ApiClient.post(
       Uri.parse('${ApiConfig.baseUrl}/verificacion/confirmar-codigo'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'telefono': telefono, 'codigo': codigo}),

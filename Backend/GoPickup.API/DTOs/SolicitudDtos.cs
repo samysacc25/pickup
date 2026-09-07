@@ -46,12 +46,21 @@ namespace GoPickup.API.DTOs
         public string? Motivo { get; set; }
     }
 
-    // Un mensaje de chat NO se guarda en base de datos: solo viaja en vivo
-    // por SignalR entre cliente y conductor mientras dure la solicitud.
     public class EnviarMensajeChatDto
     {
         [Required, MaxLength(500)]
         public string Mensaje { get; set; } = string.Empty;
+    }
+
+    // El historial de chat se guarda SOLO mientras la solicitud está activa
+    // (se borra al finalizar o cancelarse la carrera) -- así el mensaje
+    // sobrevive si el usuario cierra la pantalla de chat o navega fuera y
+    // vuelve, pero sigue sin quedar guardado para siempre.
+    public class MensajeChatRespuestaDto
+    {
+        public string Remitente { get; set; } = string.Empty;
+        public string Texto { get; set; } = string.Empty;
+        public DateTime Fecha { get; set; }
     }
 
     public class SolicitudRespuestaDto
@@ -61,6 +70,8 @@ namespace GoPickup.API.DTOs
 
         public string ClienteNombre { get; set; } = string.Empty;
         public string? ClienteTelefono { get; set; }
+        // Para que el conductor pueda verificar la identidad del cliente.
+        public string? ClienteCedula { get; set; }
 
         public int? ConductorId { get; set; }
         public string? ConductorNombre { get; set; }

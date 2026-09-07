@@ -15,6 +15,12 @@ namespace GoPickup.API.Models
         [Required, MaxLength(20)]
         public string Telefono { get; set; } = string.Empty;
 
+        // Requerida para clientes nuevos (para seguridad del conductor, que
+        // pueda verificar identidad); queda nullable porque las cuentas
+        // creadas antes de este campo no la tienen.
+        [MaxLength(10)]
+        public string? NumeroCedula { get; set; }
+
         [Required]
         public string ClaveHash { get; set; } = string.Empty;
 

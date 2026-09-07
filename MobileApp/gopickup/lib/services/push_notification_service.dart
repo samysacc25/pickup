@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:http/http.dart' as http;
+import 'api_client.dart';
 import 'package:flutter/material.dart';
 import '../config/api_config.dart';
 import '../widgets/notificacion.dart';
+import 'sonido_notificacion.dart';
 
 class PushNotificationService {
   static final PushNotificationService _instancia = PushNotificationService._interno();
@@ -24,6 +25,7 @@ class PushNotificationService {
       _mensajeria.onTokenRefresh.listen((nuevoToken) => _enviarTokenAlBackend(token, nuevoToken));
 
       FirebaseMessaging.onMessage.listen((mensaje) {
+        SonidoNotificacion.reproducir();
         if (!context.mounted) return;
         final titulo = mensaje.notification?.title ?? 'Go Pickup';
         final cuerpo = mensaje.notification?.body ?? '';
@@ -34,7 +36,7 @@ class PushNotificationService {
 
   Future<void> _enviarTokenAlBackend(String tokenSesion, String tokenDispositivo) async {
     try {
-      await http.put(
+      await ApiClient.put(
         Uri.parse('${ApiConfig.baseUrl}/notificaciones/token'),
         headers: {
           'Content-Type': 'application/json',

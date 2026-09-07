@@ -15,6 +15,9 @@ namespace GoPickup.API.Controllers
         private readonly IPasswordService _passwordService;
         private readonly ITokenService _tokenService;
 
+        // Color único para toda la flota de camionetas.
+        private const string ColorFlota = "Blanco-Verde";
+
         public AuthController(ApplicationDbContext db, IPasswordService passwordService, ITokenService tokenService)
         {
             _db = db;
@@ -28,6 +31,9 @@ namespace GoPickup.API.Controllers
             if (await _db.Usuarios.AnyAsync(u => u.Correo == dto.Correo))
                 return Conflict(new { mensaje = "Ya existe una cuenta registrada con ese correo." });
 
+            if (await _db.Usuarios.AnyAsync(u => u.NumeroCedula == dto.NumeroCedula))
+                return Conflict(new { mensaje = "Ya existe una cuenta registrada con esa cédula." });
+
             if (!await TelefonoFueVerificadoAsync(dto.Telefono))
                 return BadRequest(new { mensaje = "Debes verificar tu número de teléfono antes de registrarte." });
 
@@ -36,6 +42,7 @@ namespace GoPickup.API.Controllers
                 NombreCompleto = dto.NombreCompleto,
                 Correo = dto.Correo,
                 Telefono = dto.Telefono,
+                NumeroCedula = dto.NumeroCedula,
                 ClaveHash = _passwordService.Hash(dto.Clave),
                 Rol = RolUsuario.Cliente,
                 TelefonoVerificado = true
@@ -100,7 +107,11 @@ namespace GoPickup.API.Controllers
                 Placa = dto.Placa,
                 Marca = dto.Marca,
                 Modelo = dto.Modelo,
-                Color = dto.Color,
+                // El color es fijo para toda la flota (Blanco-Verde); se ignora
+                // cualquier valor que venga del cliente en vez de confiar en el
+                // campo bloqueado de la app -- así queda garantizado también si
+                // alguien llama al endpoint directamente.
+                Color = ColorFlota,
                 Anio = dto.Anio,
                 TipoCamioneta = dto.TipoCamioneta,
                 DescripcionCapacidad = dto.DescripcionCapacidad

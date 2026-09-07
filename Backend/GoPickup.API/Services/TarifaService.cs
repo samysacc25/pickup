@@ -7,8 +7,8 @@ namespace GoPickup.API.Services
         (decimal tarifa, bool esInterprovincial) CalcularTarifaSugerida(double origenLat, double origenLon, double destinoLat, double destinoLon, bool llevaCarga);
     }
 
-    // Tarifa = Banderazo (arranque, distinto de día/noche) + $0.50 por km si es
-    // solo transporte de pasajero (o $0.80/km si además lleva carga), con un
+    // Tarifa = Banderazo (arranque, distinto de día/noche) + $0.55 por km si es
+    // solo transporte de pasajero (o $0.90/km si además lleva carga), con un
     // piso de tarifa mínima: si el cálculo por distancia da un valor menor al
     // mínimo (viajes muy cortos), se cobra la tarifa mínima en su lugar. Para
     // viajes más largos el precio sigue creciendo normalmente con la
@@ -36,8 +36,8 @@ namespace GoPickup.API.Services
 
         public TarifaService(IConfiguration config)
         {
-            _tarifaPorKmSinCarga = config.GetValue<decimal>("Tarifas:TarifaPorKmSinCarga", 0.50m);
-            _tarifaPorKmConCarga = config.GetValue<decimal>("Tarifas:TarifaPorKmConCarga", 0.80m);
+            _tarifaPorKmSinCarga = config.GetValue<decimal>("Tarifas:TarifaPorKmSinCarga", 0.55m);
+            _tarifaPorKmConCarga = config.GetValue<decimal>("Tarifas:TarifaPorKmConCarga", 0.90m);
             _banderazoDia = config.GetValue<decimal>("Tarifas:BanderazoDia", 0.42m);
             _banderazoNoche = config.GetValue<decimal>("Tarifas:BanderazoNoche", 0.46m);
             _tarifaMinima = config.GetValue<decimal>("Tarifas:TarifaMinima", 1.45m);

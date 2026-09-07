@@ -1,9 +1,18 @@
 using Microsoft.AspNetCore.SignalR;
+using GoPickup.API.Data;
+using GoPickup.API.Models;
 
 namespace GoPickup.API.Hubs
 {
     public class SolicitudHub : Hub
     {
+        private readonly ApplicationDbContext _db;
+
+        public SolicitudHub(ApplicationDbContext db)
+        {
+            _db = db;
+        }
+
         public async Task UnirseASolicitud(int solicitudId)
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, $"solicitud-{solicitudId}");
@@ -29,14 +38,20 @@ namespace GoPickup.API.Hubs
             await Clients.Group($"solicitud-{solicitudId}").SendAsync("ubicacionConductorActualizada", lat, lon);
         }
 
-        // Chat interno entre cliente y conductor: el mensaje SOLO se retransmite
-        // en vivo por este Hub, nunca se guarda en la base de datos ni en ningún
-        // otro lugar del servidor. Si nadie está conectado al grupo en ese
-        // momento, el mensaje simplemente se pierde (no hay historial).
+        // Chat interno entre cliente y conductor: se retransmite en vivo por
+        // este Hub y además se guarda mientras la solicitud sigue activa (se
+        // borra al finalizar/cancelarse, ver SolicitudesController), para que
+        // sobreviva si alguno de los dos cierra la pantalla del chat o
+        // navega fuera y vuelve a entrar.
         public async Task EnviarMensajeChat(int solicitudId, string remitente, string mensaje)
         {
+            var fecha = DateTime.UtcNow;
+
+            _db.MensajesChat.Add(new MensajeChatSolicitud { SolicitudId = solicitudId, Remitente = remitente, Texto = mensaje, Fecha = fecha });
+            await _db.SaveChangesAsync();
+
             await Clients.OthersInGroup($"solicitud-{solicitudId}")
-                .SendAsync("mensajeChatRecibido", remitente, mensaje, DateTime.UtcNow.ToString("o"));
+                .SendAsync("mensajeChatRecibido", remitente, mensaje, fecha.ToString("o"));
         }
     }
 }

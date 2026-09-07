@@ -4,9 +4,11 @@ import '../../theme/go_pickup_theme.dart';
 import '../../services/solicitud_hub_service.dart';
 import '../../services/solicitud_service.dart';
 
-// Chat interno de una solicitud activa. Los mensajes viven SOLO en memoria
-// (esta lista se pierde al cerrar la pantalla) y se retransmiten en vivo por
-// SignalR: nunca se guardan en la base de datos ni en el celular.
+// Chat interno de una solicitud activa. Los mensajes se retransmiten en vivo
+// por SignalR y además quedan guardados en el servidor mientras la solicitud
+// siga activa, así que al abrir (o reabrir) esta pantalla se recupera el
+// historial en lugar de perderse (se borra cuando la carrera finaliza o se
+// cancela).
 class ChatScreen extends StatefulWidget {
   final SolicitudHubService hubService;
   final SolicitudService solicitudService;
@@ -32,15 +34,32 @@ class _ChatScreenState extends State<ChatScreen> {
   final _mensajeCtrl = TextEditingController();
   final _scrollController = ScrollController();
   bool _enviando = false;
+  bool _cargandoHistorial = true;
   StreamSubscription<MensajeChat>? _subMensajes;
 
   @override
   void initState() {
     super.initState();
-    // Nos suscribimos al stream de mensajes del hub (la conexión ya la abrió
-    // la pantalla anterior). Antes nadie llamaba a agregarMensajeRecibido,
-    // así que los mensajes del otro participante nunca aparecían aquí.
+    // Nos suscribimos primero al stream de mensajes del hub (la conexión ya
+    // la abrió la pantalla anterior), para no perder ningún mensaje que
+    // llegue mientras se está cargando el historial. Antes nadie llamaba a
+    // agregarMensajeRecibido, así que los mensajes del otro participante
+    // nunca aparecían aquí.
     _subMensajes = widget.hubService.mensajesChat.listen(agregarMensajeRecibido);
+    _cargarHistorial();
+  }
+
+  Future<void> _cargarHistorial() async {
+    try {
+      final historial = await widget.solicitudService.obtenerMensajesChat(widget.solicitudId);
+      if (!mounted) return;
+      setState(() => _mensajes.insertAll(0, historial));
+      _scrollAlFinal();
+    } catch (_) {
+      // Si no se pudo traer el historial, el chat sigue funcionando en vivo.
+    } finally {
+      if (mounted) setState(() => _cargandoHistorial = false);
+    }
   }
 
   void agregarMensajeRecibido(MensajeChat mensaje) {
@@ -101,7 +120,9 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: _mensajes.isEmpty
+            child: _cargandoHistorial
+                ? const Center(child: CircularProgressIndicator(color: GoPickupColors.verde))
+                : _mensajes.isEmpty
                 ? const Center(
                     child: Padding(
                       padding: EdgeInsets.all(24),

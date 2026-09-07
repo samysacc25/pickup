@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/go_pickup_theme.dart';
+import '../theme/responsive.dart';
 import 'registro_cliente_screen.dart';
 import 'conductor/registro_conductor_screen.dart';
 
@@ -10,9 +11,13 @@ class RegistroSeleccionScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Crear cuenta')),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
+      // SingleChildScrollView evita que el contenido se corte en pantallas
+      // pequeñas o en orientación horizontal.
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: ContenedorResponsivo(
+            padding: const EdgeInsets.all(24),
+            child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -33,6 +38,8 @@ class RegistroSeleccionScreen extends StatelessWidget {
               onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegistroConductorScreen())),
             ),
           ],
+            ),
+          ),
         ),
       ),
     );

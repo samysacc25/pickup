@@ -75,8 +75,14 @@ class _HistorialClienteScreenState extends State<HistorialClienteScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      // Wrap en vez de Row para que, en pantallas angostas, la
+                      // etiqueta de estado (que puede ser un texto largo como
+                      // "Buscando conductor disponible...") pase a la
+                      // siguiente línea en lugar de desbordar la tarjeta.
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Text(formatoFecha.format(s.fechaSolicitud.toLocal()), style: const TextStyle(color: Colors.grey, fontSize: 12)),
                           Container(

@@ -7,6 +7,7 @@ import '../../models/solicitud.dart';
 import '../../services/solicitud_service.dart';
 import '../../services/solicitud_hub_service.dart';
 import '../../services/calculadora_eta.dart';
+import '../../services/sonido_notificacion.dart';
 import '../../widgets/notificacion.dart';
 import '../shared/chat_screen.dart';
 import 'home_cliente_screen.dart';
@@ -43,6 +44,7 @@ class _SolicitudEnCursoScreenState extends State<SolicitudEnCursoScreen> {
     _conectarTiempoReal();
     _subConductorLlego = _hubService.conductorLlego.listen((_) {
       if (!mounted) return;
+      SonidoNotificacion.reproducir();
       mostrarExito(context, 'Tu conductor ya llegó al punto de recogida.');
     });
     _timerRespaldo = Timer.periodic(const Duration(seconds: 8), (_) => _cargarSolicitud());

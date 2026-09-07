@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'api_client.dart';
 import '../config/api_config.dart';
 
 class SugerenciaLugar {
@@ -33,7 +33,7 @@ class PlacesService {
       '&key=${ApiConfig.googlePlacesApiKey}',
     );
 
-    final respuesta = await http.get(uri);
+    final respuesta = await ApiClient.get(uri);
     if (respuesta.statusCode != 200) return [];
 
     final data = jsonDecode(respuesta.body);
@@ -54,7 +54,7 @@ class PlacesService {
       '&key=${ApiConfig.googlePlacesApiKey}',
     );
 
-    final respuesta = await http.get(uri);
+    final respuesta = await ApiClient.get(uri);
     if (respuesta.statusCode != 200) return null;
 
     final data = jsonDecode(respuesta.body);
@@ -84,7 +84,7 @@ class PlacesService {
       '&key=${ApiConfig.googlePlacesApiKey}',
     );
 
-    final respuesta = await http.get(uri);
+    final respuesta = await ApiClient.get(uri);
     if (respuesta.statusCode != 200) return null;
 
     var data = jsonDecode(respuesta.body);
@@ -96,7 +96,7 @@ class PlacesService {
         'https://maps.googleapis.com/maps/api/geocode/json'
         '?latlng=$lat,$lng&language=es&key=${ApiConfig.googlePlacesApiKey}',
       );
-      final respuesta2 = await http.get(uriSinFiltro);
+      final respuesta2 = await ApiClient.get(uriSinFiltro);
       if (respuesta2.statusCode != 200) return null;
       data = jsonDecode(respuesta2.body);
       if (data['status'] != 'OK' || (data['results'] as List).isEmpty) return null;

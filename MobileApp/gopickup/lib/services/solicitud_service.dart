@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'api_client.dart';
 import '../config/api_config.dart';
 import '../models/solicitud.dart';
+import 'solicitud_hub_service.dart' show MensajeChat;
 
 class SolicitudService {
   final String token;
@@ -25,7 +27,7 @@ class SolicitudService {
     required MetodoPago metodoPago,
     double? tarifaPropuesta,
   }) async {
-    final respuesta = await http.post(
+    final respuesta = await ApiClient.post(
       Uri.parse('${ApiConfig.baseUrl}/solicitudes'),
       headers: _headers,
       body: jsonEncode({
@@ -51,7 +53,7 @@ class SolicitudService {
   }
 
   Future<Solicitud> obtenerSolicitud(int id) async {
-    final respuesta = await http.get(
+    final respuesta = await ApiClient.get(
       Uri.parse('${ApiConfig.baseUrl}/solicitudes/$id'),
       headers: _headers,
     );
@@ -62,7 +64,7 @@ class SolicitudService {
   }
 
   Future<List<Solicitud>> misSolicitudes() async {
-    final respuesta = await http.get(
+    final respuesta = await ApiClient.get(
       Uri.parse('${ApiConfig.baseUrl}/solicitudes/mis-solicitudes'),
       headers: _headers,
     );
@@ -74,7 +76,7 @@ class SolicitudService {
   }
 
   Future<void> cancelarSolicitud(int id, {String? motivo}) async {
-    final respuesta = await http.put(
+    final respuesta = await ApiClient.put(
       Uri.parse('${ApiConfig.baseUrl}/solicitudes/$id/cancelar'),
       headers: _headers,
       body: jsonEncode({'motivo': motivo}),
@@ -85,7 +87,7 @@ class SolicitudService {
   }
 
   Future<void> calificarConductor(int solicitudId, int calificacion) async {
-    final respuesta = await http.put(
+    final respuesta = await ApiClient.put(
       Uri.parse('${ApiConfig.baseUrl}/solicitudes/$solicitudId/calificar-conductor'),
       headers: _headers,
       body: jsonEncode({'calificacion': calificacion}),
@@ -96,7 +98,7 @@ class SolicitudService {
   }
 
   Future<List<Solicitud>> solicitudesDisponibles() async {
-    final respuesta = await http.get(
+    final respuesta = await ApiClient.get(
       Uri.parse('${ApiConfig.baseUrl}/solicitudes/disponibles'),
       headers: _headers,
     );
@@ -108,7 +110,7 @@ class SolicitudService {
   }
 
   Future<Solicitud> aceptarSolicitud(int id) async {
-    final respuesta = await http.post(
+    final respuesta = await ApiClient.post(
       Uri.parse('${ApiConfig.baseUrl}/solicitudes/$id/aceptar'),
       headers: _headers,
     );
@@ -124,7 +126,7 @@ class SolicitudService {
   Future<Solicitud> finalizarServicio(int id) => _cambiarEstado(id, 'finalizar');
 
   Future<Solicitud> _cambiarEstado(int id, String accion) async {
-    final respuesta = await http.put(
+    final respuesta = await ApiClient.put(
       Uri.parse('${ApiConfig.baseUrl}/solicitudes/$id/$accion'),
       headers: _headers,
     );
@@ -135,13 +137,33 @@ class SolicitudService {
     throw Exception(error['mensaje'] ?? 'No se pudo actualizar el estado del servicio.');
   }
 
-  // Respaldo por HTTP del chat (además del envío por SignalR). No se guarda
-  // nada en la base de datos, solo se retransmite en vivo al otro participante.
+  // Respaldo por HTTP del chat (además del envío por SignalR). El mensaje
+  // queda guardado mientras la solicitud siga activa (se borra al finalizar
+  // o cancelarse), para que sobreviva si el usuario cierra la pantalla de
+  // chat o navega fuera y vuelve.
   Future<void> enviarMensajeChat(int solicitudId, String mensaje) async {
-    await http.post(
+    await ApiClient.post(
       Uri.parse('${ApiConfig.baseUrl}/solicitudes/$solicitudId/mensaje-chat'),
       headers: _headers,
       body: jsonEncode({'mensaje': mensaje}),
     );
+  }
+
+  // Trae el historial de chat guardado hasta el momento, para que al abrir
+  // (o reabrir) la pantalla de chat no se pierda la conversación anterior.
+  Future<List<MensajeChat>> obtenerMensajesChat(int solicitudId) async {
+    final respuesta = await ApiClient.get(
+      Uri.parse('${ApiConfig.baseUrl}/solicitudes/$solicitudId/mensajes-chat'),
+      headers: _headers,
+    );
+    if (respuesta.statusCode != 200) return [];
+    final lista = jsonDecode(utf8.decode(respuesta.bodyBytes)) as List;
+    return lista
+        .map((m) => MensajeChat(
+              remitente: m['remitente'] ?? '',
+              texto: m['texto'] ?? '',
+              fecha: DateTime.parse(m['fecha']),
+            ))
+        .toList();
   }
 }

@@ -10,6 +10,7 @@ import '../../services/solicitud_service.dart';
 import '../../services/solicitud_hub_service.dart';
 import '../../services/conductor_service.dart' as conductor_srv;
 import '../../services/push_notification_service.dart';
+import '../../services/sonido_notificacion.dart';
 import '../../theme/responsive.dart';
 import '../../widgets/notificacion.dart';
 import '../login_screen.dart';
@@ -62,9 +63,25 @@ class _HomeConductorScreenState extends State<HomeConductorScreen> {
     _conductorService = conductor_srv.ConductorService(widget.sesion.token);
     _hubService = SolicitudHubService(widget.sesion.token);
     _obtenerUbicacionActual();
+    _restaurarDisponibilidadSiCorresponde();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       PushNotificationService().inicializar(token: widget.sesion.token, context: context);
     });
+  }
+
+  // Si el conductor cerró la app (o Android la mató en segundo plano) sin
+  // apagar manualmente la disponibilidad, el servidor lo sigue considerando
+  // "Disponible". Antes, al reabrir la app, el switch siempre arrancaba en
+  // Desconectado y dejaba de recibir solicitudes hasta que lo tocara de
+  // nuevo. Ahora se consulta el estado real al abrir y, si sigue disponible,
+  // se reconecta solo -- sigue "corriendo" hasta que el conductor apague la
+  // disponibilidad él mismo.
+  Future<void> _restaurarDisponibilidadSiCorresponde() async {
+    final estado = await _conductorService.obtenerEstadoActual();
+    if (!mounted) return;
+    if (estado == conductor_srv.EstadoConductor.disponible && !_disponible) {
+      await _alternarDisponibilidad(true);
+    }
   }
 
   Future<void> _obtenerUbicacionActual() async {
@@ -144,6 +161,7 @@ class _HomeConductorScreenState extends State<HomeConductorScreen> {
     if (!mounted || _tieneViajeActivo) return;
     if (_solicitudesEntrantes.any((s) => s.id == solicitud.id)) return;
     setState(() => _solicitudesEntrantes.add(solicitud));
+    SonidoNotificacion.reproducir();
   }
 
   void _quitarSolicitudEntrante(int solicitudId) {

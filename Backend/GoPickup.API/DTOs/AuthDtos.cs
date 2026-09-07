@@ -17,6 +17,11 @@ namespace GoPickup.API.DTOs
 
         [Required, MinLength(6)]
         public string Clave { get; set; } = string.Empty;
+
+        // Para seguridad del conductor: puede verificar la identidad del
+        // cliente antes/durante el viaje.
+        [Required, CedulaEcuatoriana]
+        public string NumeroCedula { get; set; } = string.Empty;
     }
 
     public class SolicitudConductorDto

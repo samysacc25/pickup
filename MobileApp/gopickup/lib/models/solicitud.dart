@@ -90,6 +90,8 @@ class Solicitud {
   final EstadoSolicitud estado;
   final String clienteNombre;
   final String? clienteTelefono;
+  // Cédula del cliente, visible para el conductor por seguridad.
+  final String? clienteCedula;
   final int? conductorId;
   final String? conductorNombre;
   final String? conductorTelefono;
@@ -121,6 +123,7 @@ class Solicitud {
     required this.estado,
     required this.clienteNombre,
     this.clienteTelefono,
+    this.clienteCedula,
     this.conductorId,
     this.conductorNombre,
     this.conductorTelefono,
@@ -154,6 +157,7 @@ class Solicitud {
       estado: estadoDesdeNumero(json['estado']),
       clienteNombre: json['clienteNombre'] ?? '',
       clienteTelefono: json['clienteTelefono'],
+      clienteCedula: json['clienteCedula'],
       conductorId: json['conductorId'],
       conductorNombre: json['conductorNombre'],
       conductorTelefono: json['conductorTelefono'],

@@ -8,6 +8,7 @@ import '../../models/solicitud.dart';
 import '../../models/licencia.dart';
 import '../../widgets/notificacion.dart';
 import '../../widgets/selector_foto.dart';
+import '../../widgets/campo_clave.dart';
 import '../../widgets/modal_verificacion_telefono.dart';
 import 'pendiente_aprobacion_screen.dart';
 
@@ -29,13 +30,17 @@ class _RegistroConductorScreenState extends State<RegistroConductorScreen> {
   final _placaCtrl = TextEditingController();
   final _marcaCtrl = TextEditingController();
   final _modeloCtrl = TextEditingController();
-  final _colorCtrl = TextEditingController();
+  final _colorCtrl = TextEditingController(text: _colorFlota);
   final _anioCtrl = TextEditingController();
   final _capacidadCtrl = TextEditingController();
 
   TipoLicencia _tipoLicencia = TipoLicencia.b;
   TipoCamioneta _tipoCamioneta = TipoCamioneta.pequena;
   final _authService = AuthService();
+
+  // Todos los vehículos de la flota deben ir pintados igual (Blanco-Verde),
+  // así que este campo va fijo y el conductor no lo puede editar.
+  static const String _colorFlota = 'Blanco-Verde';
 
   File? _fotoPerfil;
   File? _fotoFrontal;
@@ -198,10 +203,8 @@ class _RegistroConductorScreenState extends State<RegistroConductorScreen> {
                     child: Text('Debes verificar tu número antes de continuar', style: TextStyle(fontSize: 11, color: Colors.grey)),
                   ),
                 const SizedBox(height: 12),
-                TextFormField(
+                CampoClave(
                   controller: _claveCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Contraseña', prefixIcon: Icon(Icons.lock_outline)),
                   validator: (v) => (v == null || v.length < 6) ? 'Mínimo 6 caracteres' : null,
                 ),
                 const SizedBox(height: 12),
@@ -256,7 +259,17 @@ class _RegistroConductorScreenState extends State<RegistroConductorScreen> {
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Expanded(child: TextFormField(controller: _colorCtrl, decoration: const InputDecoration(labelText: 'Color'))),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _colorCtrl,
+                        enabled: false,
+                        decoration: const InputDecoration(
+                          labelText: 'Color',
+                          helperText: 'Fijo para toda la flota',
+                          helperMaxLines: 1,
+                        ),
+                      ),
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: TextFormField(
