@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using GoPickup.API.Models;
 
 namespace GoPickup.API.Data
@@ -60,6 +61,33 @@ namespace GoPickup.API.Data
                 .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<MensajeChatSolicitud>().HasIndex(m => m.SolicitudId);
+
+            // SQL Server no guarda la zona horaria de un DateTime: aunque se
+            // guarde con DateTime.UtcNow, al leerlo de vuelta EF Core lo
+            // entrega como Kind=Unspecified. Eso hacía que el JSON de la API
+            // no incluyera la "Z" de UTC, y la app (Flutter) interpretaba esa
+            // fecha como si ya fuera la hora local del celular en vez de
+            // convertirla -- por eso las fechas/horas se veían adelantadas
+            // (la diferencia entre UTC y Ecuador, 5 horas). Este converter
+            // fuerza Kind=Utc en toda columna DateTime al leerla de la base,
+            // para que el celular pueda calcular la hora de Ecuador bien.
+            var conversorUtc = new ValueConverter<DateTime, DateTime>(
+                v => v,
+                v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
+            var conversorUtcNulo = new ValueConverter<DateTime?, DateTime?>(
+                v => v,
+                v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : v);
+
+            foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+            {
+                foreach (var property in entityType.GetProperties())
+                {
+                    if (property.ClrType == typeof(DateTime))
+                        property.SetValueConverter(conversorUtc);
+                    else if (property.ClrType == typeof(DateTime?))
+                        property.SetValueConverter(conversorUtcNulo);
+                }
+            }
         }
     }
 }
