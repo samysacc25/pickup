@@ -9,6 +9,7 @@ import 'cliente/home_cliente_screen.dart';
 import 'conductor/home_conductor_screen.dart';
 import 'conductor/pendiente_aprobacion_screen.dart';
 import 'registro_seleccion_screen.dart';
+import 'restablecer_clave_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -91,7 +92,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: _claveCtrl,
                   validator: (v) => (v == null || v.length < 6) ? 'Mínimo 6 caracteres' : null,
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RestablecerClaveScreen())),
+                    child: const Text('¿Olvidaste tu contraseña?'),
+                  ),
+                ),
+                const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: _cargando ? null : _iniciarSesion,
                   child: _cargando

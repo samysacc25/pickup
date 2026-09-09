@@ -81,4 +81,26 @@ namespace GoPickup.API.DTOs
         public int? ConductorId { get; set; }
         public EstadoSolicitudConductor? EstadoSolicitudConductor { get; set; }
     }
+
+    // Reseteo de contraseña por teléfono: el usuario ingresa solo su número,
+    // el sistema busca a qué cuenta pertenece y envía un código SMS antes de
+    // permitir el cambio -- así solo quien tiene acceso a ese teléfono puede
+    // resetear la contraseña de esa cuenta.
+    public class SolicitarResetClaveDto
+    {
+        [Required, MaxLength(20)]
+        public string Telefono { get; set; } = string.Empty;
+    }
+
+    public class ConfirmarResetClaveDto
+    {
+        [Required, MaxLength(20)]
+        public string Telefono { get; set; } = string.Empty;
+
+        [Required, MaxLength(6)]
+        public string Codigo { get; set; } = string.Empty;
+
+        [Required, MinLength(6)]
+        public string NuevaClave { get; set; } = string.Empty;
+    }
 }

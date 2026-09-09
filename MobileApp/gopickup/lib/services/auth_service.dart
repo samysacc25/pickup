@@ -101,4 +101,39 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('sesion');
   }
+
+  // Reseteo de contraseña por teléfono: paso 1 pide el código SMS y devuelve
+  // el primer nombre del dueño de la cuenta (para que la persona confirme
+  // que es la suya antes de seguir), paso 2 confirma el código y aplica la
+  // nueva contraseña.
+  Future<Map<String, dynamic>> solicitarResetClave(String telefono) async {
+    final respuesta = await ApiClient.post(
+      Uri.parse('${ApiConfig.baseUrl}/auth/reset-clave/solicitar'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'telefono': telefono}),
+    );
+
+    if (respuesta.statusCode != 200) {
+      throw Exception(ApiClient.mensajeDeError(respuesta, 'No se pudo procesar la solicitud.'));
+    }
+
+    final data = jsonDecode(utf8.decode(respuesta.bodyBytes));
+    return {
+      'nombre': data['nombre'] as String?,
+      'smsEnviado': data['smsEnviado'] ?? true,
+      'codigoDesarrollo': data['codigoDesarrollo'],
+    };
+  }
+
+  Future<void> confirmarResetClave(String telefono, String codigo, String nuevaClave) async {
+    final respuesta = await ApiClient.post(
+      Uri.parse('${ApiConfig.baseUrl}/auth/reset-clave/confirmar'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'telefono': telefono, 'codigo': codigo, 'nuevaClave': nuevaClave}),
+    );
+
+    if (respuesta.statusCode != 200) {
+      throw Exception(ApiClient.mensajeDeError(respuesta, 'No se pudo actualizar la contraseña.'));
+    }
+  }
 }
