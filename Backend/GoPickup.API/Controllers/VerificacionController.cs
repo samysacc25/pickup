@@ -47,9 +47,17 @@ namespace GoPickup.API.Controllers
             if (yaExiste)
                 return Conflict(new { mensaje = "Ese número de teléfono ya está registrado en otra cuenta." });
 
+            var registro = await _db.CodigosVerificacionTelefono.FirstOrDefaultAsync(c => c.Telefono == dto.Telefono);
+
+            // Antes se podía pedir un código nuevo sin ningún límite de tiempo
+            // -- alguien podía golpear este endpoint en bucle para saturar de
+            // SMS un número (costo de Twilio + molestia a la persona dueña
+            // del teléfono, sea o no quien está usando la app).
+            if (registro is not null && registro.FechaCreacion > DateTime.UtcNow.AddSeconds(-60))
+                return BadRequest(new { mensaje = "Espera un momento antes de solicitar otro código." });
+
             var codigo = Random.Shared.Next(100000, 999999).ToString();
 
-            var registro = await _db.CodigosVerificacionTelefono.FirstOrDefaultAsync(c => c.Telefono == dto.Telefono);
             if (registro is null)
             {
                 registro = new CodigoVerificacionTelefono { Telefono = dto.Telefono };

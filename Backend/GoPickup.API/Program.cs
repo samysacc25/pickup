@@ -106,7 +106,7 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     var passwordService = scope.ServiceProvider.GetRequiredService<IPasswordService>();
-    DbInitializer.Inicializar(db, passwordService);
+    DbInitializer.Inicializar(db, passwordService, app.Configuration);
 }
 
 if (app.Environment.IsDevelopment())

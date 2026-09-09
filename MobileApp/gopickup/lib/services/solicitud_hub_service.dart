@@ -103,12 +103,15 @@ class SolicitudHubService {
     } catch (_) {}
   }
 
-  // Chat interno: el mensaje solo se retransmite en vivo, nunca se guarda.
+  // Envía el mensaje por SignalR. A propósito NO se atrapa el error aquí:
+  // chat_screen.dart depende de que esta llamada lance una excepción cuando
+  // el hub no está disponible para activar su respaldo por HTTP -- antes se
+  // atrapaba silenciosamente en este método, así que ese respaldo nunca se
+  // llegaba a ejecutar y el mensaje simplemente se perdía si el socket
+  // estaba caído.
   Future<void> enviarMensajeChat(int solicitudId, String remitente, String mensaje) async {
-    if (_conexion == null) return;
-    try {
-      await _conexion!.invoke('EnviarMensajeChat', args: [solicitudId, remitente, mensaje]);
-    } catch (_) {}
+    if (_conexion == null) throw Exception('No hay conexión activa con el servidor.');
+    await _conexion!.invoke('EnviarMensajeChat', args: [solicitudId, remitente, mensaje]);
   }
 
   Future<void> desconectar() async {

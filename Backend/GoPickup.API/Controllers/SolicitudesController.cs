@@ -35,10 +35,31 @@ namespace GoPickup.API.Controllers
 
         private int UsuarioIdActual => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
+        private int? ConductorIdActual =>
+            int.TryParse(User.FindFirstValue("ConductorId"), out var id) ? id : null;
+
+        // Verifica que quien llama sea el cliente o el conductor de ESA
+        // solicitud en particular -- antes bastaba con tener CUALQUIER cuenta
+        // de cliente/conductor autenticada para leer o actuar sobre una
+        // solicitud ajena (con solo adivinar/probar el ID).
+        private bool EsParticipante(Solicitud solicitud)
+        {
+            if (User.IsInRole("Cliente") && solicitud.ClienteId == UsuarioIdActual) return true;
+            if (User.IsInRole("Conductor") && solicitud.ConductorId is not null && solicitud.ConductorId == ConductorIdActual) return true;
+            return false;
+        }
+
         [HttpPost]
         [Authorize(Roles = "Cliente")]
         public async Task<ActionResult<SolicitudRespuestaDto>> CrearSolicitud(CrearSolicitudDto dto)
         {
+            // Transacción Serializable: sin esto, dos solicitudes del mismo
+            // cliente enviadas casi al mismo tiempo (doble tap, reintento de
+            // red) podían pasar juntas la verificación de "ya tiene una
+            // solicitud activa" antes de que la primera terminara de
+            // guardarse, resultando en dos solicitudes activas simultáneas.
+            using var transaccion = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+
             var yaTieneSolicitudActiva = await _db.Solicitudes.AnyAsync(s =>
                 s.ClienteId == UsuarioIdActual &&
                 (s.Estado == EstadoSolicitud.Buscando || s.Estado == EstadoSolicitud.Aceptada ||
@@ -87,6 +108,7 @@ namespace GoPickup.API.Controllers
 
             _db.Solicitudes.Add(solicitud);
             await _db.SaveChangesAsync();
+            await transaccion.CommitAsync();
 
             var respuesta = await ObtenerRespuesta(solicitud.Id);
             await _hub.Clients.Group("conductores-disponibles").SendAsync("nuevaSolicitudDisponible", respuesta);
@@ -111,15 +133,17 @@ namespace GoPickup.API.Controllers
         [Authorize(Roles = "Conductor")]
         public async Task<ActionResult<List<SolicitudRespuestaDto>>> SolicitudesDisponibles()
         {
-            var ids = await _db.Solicitudes
+            // Antes esto traía primero solo los IDs y luego hacía UNA consulta
+            // completa (con sus Include) POR CADA solicitud -- con 50
+            // solicitudes activas eran 51 consultas a la base de datos en vez
+            // de 1. Ahora se trae todo en una sola consulta y se arma el DTO
+            // en memoria.
+            var solicitudes = await ConsultaConIncludes()
                 .Where(s => s.Estado == EstadoSolicitud.Buscando)
                 .OrderBy(s => s.FechaSolicitud)
-                .Select(s => s.Id)
                 .ToListAsync();
 
-            var resultado = new List<SolicitudRespuestaDto>();
-            foreach (var id in ids) resultado.Add(await ObtenerRespuesta(id));
-            return Ok(resultado);
+            return Ok(solicitudes.Select(MapearRespuesta).ToList());
         }
 
         [HttpPost("{id}/aceptar")]
@@ -131,6 +155,13 @@ namespace GoPickup.API.Controllers
 
             if (conductor.EstadoSolicitud != EstadoSolicitudConductor.Aprobada)
                 return BadRequest(new { mensaje = "Tu cuenta de conductor aún no ha sido aprobada por el administrador." });
+
+            // Antes solo se validaba el estado de APROBACIÓN del conductor,
+            // no si ya estaba en otro viaje -- un conductor con un viaje en
+            // curso (Estado = EnViaje/Ocupado) podía aceptar una segunda
+            // solicitud simultánea.
+            if (conductor.Estado != EstadoConductor.Disponible)
+                return BadRequest(new { mensaje = "No puedes aceptar una nueva solicitud mientras tienes otro viaje en curso." });
 
             var solicitud = await _db.Solicitudes.FirstOrDefaultAsync(s => s.Id == id);
             if (solicitud is null) return NotFound();
@@ -168,6 +199,11 @@ namespace GoPickup.API.Controllers
         {
             var solicitud = await _db.Solicitudes.Include(s => s.Conductor).FirstOrDefaultAsync(s => s.Id == id);
             if (solicitud is null) return NotFound();
+
+            // Antes cualquier conductor autenticado podía finalizar el viaje
+            // de OTRO conductor con solo conocer el ID de la solicitud.
+            if (solicitud.ConductorId != ConductorIdActual) return Forbid();
+
             if (solicitud.Estado != EstadoSolicitud.Iniciada) return BadRequest(new { mensaje = "El servicio no está en curso." });
 
             solicitud.Estado = EstadoSolicitud.Finalizada;
@@ -192,6 +228,10 @@ namespace GoPickup.API.Controllers
             var solicitud = await _db.Solicitudes.Include(s => s.Conductor).FirstOrDefaultAsync(s => s.Id == id);
             if (solicitud is null) return NotFound();
 
+            // Antes cualquier cliente o conductor autenticado podía cancelar
+            // la solicitud de OTRA persona con solo conocer su ID.
+            if (!EsParticipante(solicitud)) return Forbid();
+
             var esCliente = User.IsInRole("Cliente");
 
             // Si el cliente cancela DESPUÉS de que un conductor ya la había
@@ -202,6 +242,17 @@ namespace GoPickup.API.Controllers
             {
                 var cliente = await _db.Usuarios.FindAsync(solicitud.ClienteId);
                 if (cliente is not null) cliente.RecargoPendiente += RecargoPorCancelacion;
+            }
+
+            // Si ESTA solicitud ya traía un recargo (por una cancelación
+            // anterior) y ahora se cancela sin completarse, ese monto se
+            // devuelve como pendiente en vez de perderse -- antes desaparecía
+            // silenciosamente porque solo vivía sumado a la tarifa de esta
+            // solicitud, que nunca se llegó a cobrar.
+            if (solicitud.RecargoAplicado is > 0)
+            {
+                var clienteConRecargo = await _db.Usuarios.FindAsync(solicitud.ClienteId);
+                if (clienteConRecargo is not null) clienteConRecargo.RecargoPendiente += solicitud.RecargoAplicado.Value;
             }
 
             solicitud.Estado = esCliente ? EstadoSolicitud.CanceladaCliente : EstadoSolicitud.CanceladaConductor;
@@ -221,30 +272,37 @@ namespace GoPickup.API.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<SolicitudRespuestaDto>> ObtenerSolicitud(int id)
         {
-            var existe = await _db.Solicitudes.AnyAsync(s => s.Id == id);
-            if (!existe) return NotFound();
+            var solicitud = await _db.Solicitudes.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id);
+            if (solicitud is null) return NotFound();
+
+            // Antes cualquier cliente o conductor autenticado podía consultar
+            // el detalle (nombre, teléfono, cédula, ubicación en vivo...) de
+            // la solicitud de OTRA persona con solo conocer/probar su ID.
+            if (!EsParticipante(solicitud)) return Forbid();
+
             return Ok(await ObtenerRespuesta(id));
         }
 
         [HttpGet("mis-solicitudes")]
         public async Task<ActionResult<List<SolicitudRespuestaDto>>> MisSolicitudes()
         {
-            List<int> ids;
+            // Antes se traían primero los IDs y luego se hacía una consulta
+            // completa por cada uno (N+1). Ahora es una sola consulta con
+            // Include y el DTO se arma en memoria.
+            List<Solicitud> solicitudes;
             if (User.IsInRole("Conductor"))
             {
                 var conductor = await _db.Conductores.FirstOrDefaultAsync(c => c.UsuarioId == UsuarioIdActual);
-                ids = conductor is null
-                    ? new List<int>()
-                    : await _db.Solicitudes.Where(s => s.ConductorId == conductor.Id).OrderByDescending(s => s.FechaSolicitud).Select(s => s.Id).ToListAsync();
+                solicitudes = conductor is null
+                    ? new List<Solicitud>()
+                    : await ConsultaConIncludes().Where(s => s.ConductorId == conductor.Id).OrderByDescending(s => s.FechaSolicitud).ToListAsync();
             }
             else
             {
-                ids = await _db.Solicitudes.Where(s => s.ClienteId == UsuarioIdActual).OrderByDescending(s => s.FechaSolicitud).Select(s => s.Id).ToListAsync();
+                solicitudes = await ConsultaConIncludes().Where(s => s.ClienteId == UsuarioIdActual).OrderByDescending(s => s.FechaSolicitud).ToListAsync();
             }
 
-            var resultado = new List<SolicitudRespuestaDto>();
-            foreach (var id in ids) resultado.Add(await ObtenerRespuesta(id));
-            return Ok(resultado);
+            return Ok(solicitudes.Select(MapearRespuesta).ToList());
         }
 
         [HttpPut("{id}/calificar-conductor")]
@@ -253,6 +311,11 @@ namespace GoPickup.API.Controllers
         {
             var solicitud = await _db.Solicitudes.Include(s => s.Conductor).FirstOrDefaultAsync(s => s.Id == id);
             if (solicitud is null) return NotFound();
+
+            // Antes cualquier cliente autenticado podía calificar el viaje de
+            // OTRO cliente con solo conocer el ID de la solicitud.
+            if (solicitud.ClienteId != UsuarioIdActual) return Forbid();
+
             if (solicitud.Estado != EstadoSolicitud.Finalizada) return BadRequest(new { mensaje = "Solo puedes calificar servicios finalizados." });
 
             solicitud.CalificacionConductor = dto.Calificacion;
@@ -280,6 +343,10 @@ namespace GoPickup.API.Controllers
             var solicitud = await _db.Solicitudes.FirstOrDefaultAsync(s => s.Id == id);
             if (solicitud is null) return NotFound();
 
+            // Antes cualquier cliente o conductor autenticado podía escribir
+            // en el chat de una solicitud ajena con solo conocer su ID.
+            if (!EsParticipante(solicitud)) return Forbid();
+
             var remitente = User.IsInRole("Conductor") ? "conductor" : "cliente";
             var fecha = DateTime.UtcNow;
 
@@ -297,8 +364,12 @@ namespace GoPickup.API.Controllers
         [HttpGet("{id}/mensajes-chat")]
         public async Task<ActionResult<List<MensajeChatRespuestaDto>>> ObtenerMensajesChat(int id)
         {
-            var existe = await _db.Solicitudes.AnyAsync(s => s.Id == id);
-            if (!existe) return NotFound();
+            var solicitud = await _db.Solicitudes.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id);
+            if (solicitud is null) return NotFound();
+
+            // Antes cualquier cliente o conductor autenticado podía leer el
+            // historial de chat de una solicitud ajena con solo conocer su ID.
+            if (!EsParticipante(solicitud)) return Forbid();
 
             var mensajes = await _db.MensajesChat
                 .Where(m => m.SolicitudId == id)
@@ -313,6 +384,10 @@ namespace GoPickup.API.Controllers
         {
             var solicitud = await _db.Solicitudes.FirstOrDefaultAsync(s => s.Id == id);
             if (solicitud is null) return NotFound();
+
+            // Antes cualquier conductor autenticado podía marcar "en camino"
+            // o "iniciado" el viaje de OTRO conductor con solo conocer el ID.
+            if (solicitud.ConductorId != ConductorIdActual) return Forbid();
 
             solicitud.Estado = nuevoEstado;
             if (marcarInicio) solicitud.FechaInicio = DateTime.UtcNow;
@@ -343,14 +418,25 @@ namespace GoPickup.API.Controllers
                 new Dictionary<string, string> { { "tipo", "actualizacion_solicitud" }, { "solicitudId", solicitudId.ToString() } });
         }
 
-        private async Task<SolicitudRespuestaDto> ObtenerRespuesta(int solicitudId)
-        {
-            var s = await _db.Solicitudes
+        // Consulta base con los Include necesarios para armar el DTO -- se
+        // reutiliza tanto para traer una sola solicitud como para listas
+        // (disponibles / mis-solicitudes), evitando el patrón N+1 que había
+        // antes de traer una lista de IDs y volver a consultar uno por uno.
+        private IQueryable<Solicitud> ConsultaConIncludes() =>
+            _db.Solicitudes
+                .AsNoTracking()
                 .Include(x => x.Cliente)
                 .Include(x => x.Conductor).ThenInclude(c => c!.Usuario)
-                .Include(x => x.Conductor).ThenInclude(c => c!.Vehiculo)
-                .FirstAsync(x => x.Id == solicitudId);
+                .Include(x => x.Conductor).ThenInclude(c => c!.Vehiculo);
 
+        private async Task<SolicitudRespuestaDto> ObtenerRespuesta(int solicitudId)
+        {
+            var s = await ConsultaConIncludes().FirstAsync(x => x.Id == solicitudId);
+            return MapearRespuesta(s);
+        }
+
+        private static SolicitudRespuestaDto MapearRespuesta(Solicitud s)
+        {
             return new SolicitudRespuestaDto
             {
                 Id = s.Id,
