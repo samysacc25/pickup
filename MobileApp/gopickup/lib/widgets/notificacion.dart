@@ -59,6 +59,23 @@ void mostrarExito(BuildContext context, String mensaje) {
   );
 }
 
+// Antes esto solo le sacaba el prefijo "Exception: " al mensaje, pero si el
+// error era otro tipo (FormatException, SocketException, etc. -- por ejemplo
+// cuando el servidor responde algo que no es el JSON esperado, como una
+// página de error vacía mientras Azure se está reiniciando) se mostraba el
+// texto técnico crudo tal cual, cosa que ya pasó y confundía. Ahora se
+// reconocen esos casos comunes y se muestra un aviso entendible.
 String textoError(Object error) {
-  return error.toString().replaceFirst('Exception: ', '');
+  final texto = error.toString();
+
+  if (texto.startsWith('Exception: ')) return texto.replaceFirst('Exception: ', '');
+
+  if (error is FormatException || texto.contains('FormatException')) {
+    return 'El servidor no respondió correctamente. Intenta de nuevo en unos segundos.';
+  }
+  if (texto.contains('SocketException') || texto.contains('ClientException') || texto.contains('HandshakeException')) {
+    return 'No se pudo conectar al servidor. Revisa tu conexión a internet.';
+  }
+
+  return texto;
 }

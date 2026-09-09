@@ -48,8 +48,7 @@ class SolicitudService {
     if (respuesta.statusCode == 200) {
       return Solicitud.fromJson(jsonDecode(utf8.decode(respuesta.bodyBytes)));
     }
-    final error = jsonDecode(utf8.decode(respuesta.bodyBytes));
-    throw Exception(error['mensaje'] ?? 'No se pudo crear la solicitud.');
+    throw Exception(ApiClient.mensajeDeError(respuesta, 'No se pudo crear la solicitud.'));
   }
 
   Future<Solicitud> obtenerSolicitud(int id) async {
@@ -117,8 +116,7 @@ class SolicitudService {
     if (respuesta.statusCode == 200) {
       return Solicitud.fromJson(jsonDecode(utf8.decode(respuesta.bodyBytes)));
     }
-    final error = jsonDecode(utf8.decode(respuesta.bodyBytes));
-    throw Exception(error['mensaje'] ?? 'No se pudo aceptar la solicitud.');
+    throw Exception(ApiClient.mensajeDeError(respuesta, 'No se pudo aceptar la solicitud.'));
   }
 
   Future<Solicitud> marcarEnCamino(int id) => _cambiarEstado(id, 'en-camino');
@@ -133,8 +131,7 @@ class SolicitudService {
     if (respuesta.statusCode == 200) {
       return Solicitud.fromJson(jsonDecode(utf8.decode(respuesta.bodyBytes)));
     }
-    final error = jsonDecode(utf8.decode(respuesta.bodyBytes));
-    throw Exception(error['mensaje'] ?? 'No se pudo actualizar el estado del servicio.');
+    throw Exception(ApiClient.mensajeDeError(respuesta, 'No se pudo actualizar el estado del servicio.'));
   }
 
   // Respaldo por HTTP del chat (además del envío por SignalR). El mensaje

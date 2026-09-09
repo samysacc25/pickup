@@ -10,12 +10,11 @@ class VerificacionService {
       body: jsonEncode({'telefono': telefono}),
     );
 
-    final data = jsonDecode(utf8.decode(respuesta.bodyBytes));
-
     if (respuesta.statusCode != 200) {
-      throw Exception(data['mensaje'] ?? 'No se pudo enviar el código de verificación.');
+      throw Exception(ApiClient.mensajeDeError(respuesta, 'No se pudo enviar el código de verificación.'));
     }
 
+    final data = jsonDecode(utf8.decode(respuesta.bodyBytes));
     return {
       'smsEnviado': data['smsEnviado'] ?? true,
       'codigoDesarrollo': data['codigoDesarrollo'],
@@ -30,8 +29,7 @@ class VerificacionService {
     );
 
     if (respuesta.statusCode != 200) {
-      final data = jsonDecode(utf8.decode(respuesta.bodyBytes));
-      throw Exception(data['mensaje'] ?? 'No se pudo verificar el código.');
+      throw Exception(ApiClient.mensajeDeError(respuesta, 'No se pudo verificar el código.'));
     }
   }
 }

@@ -30,8 +30,7 @@ class ConductorService {
       body: jsonEncode({'estado': estadoConductorANumero(estado)}),
     );
     if (respuesta.statusCode != 204) {
-      final error = jsonDecode(utf8.decode(respuesta.bodyBytes));
-      throw Exception(error['mensaje'] ?? 'No se pudo actualizar tu estado.');
+      throw Exception(ApiClient.mensajeDeError(respuesta, 'No se pudo actualizar tu estado.'));
     }
   }
 

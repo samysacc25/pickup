@@ -82,8 +82,7 @@ class AuthService {
       await _guardarSesion(sesion);
       return sesion;
     }
-    final error = jsonDecode(utf8.decode(respuesta.bodyBytes));
-    throw Exception(error['mensaje'] ?? 'No se pudo completar la operación.');
+    throw Exception(ApiClient.mensajeDeError(respuesta, 'No se pudo completar la operación.'));
   }
 
   Future<void> _guardarSesion(SesionUsuario sesion) async {
