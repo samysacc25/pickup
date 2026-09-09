@@ -10,6 +10,7 @@ import '../../widgets/notificacion.dart';
 import '../../widgets/selector_foto.dart';
 import '../../widgets/campo_clave.dart';
 import '../../widgets/modal_verificacion_telefono.dart';
+import '../terminos_condiciones_screen.dart';
 import 'pendiente_aprobacion_screen.dart';
 
 class RegistroConductorScreen extends StatefulWidget {
@@ -86,6 +87,15 @@ class _RegistroConductorScreenState extends State<RegistroConductorScreen> {
       mostrarError(context, 'Debes subir la foto frontal de tu licencia de conducir.');
       return;
     }
+
+    // El formulario ya se validó y el teléfono ya está verificado -- ahora
+    // se muestran los términos y condiciones / protección de datos. Solo si
+    // la persona los acepta explícitamente se procede a enviar la solicitud.
+    final aceptoTerminos = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const TerminosCondicionesScreen()),
+    );
+    if (aceptoTerminos != true) return;
+    if (!mounted) return;
 
     setState(() => _cargando = true);
 

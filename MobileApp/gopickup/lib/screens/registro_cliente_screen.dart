@@ -10,6 +10,7 @@ import '../widgets/selector_foto.dart';
 import '../widgets/campo_clave.dart';
 import '../widgets/modal_verificacion_telefono.dart';
 import 'cliente/home_cliente_screen.dart';
+import 'terminos_condiciones_screen.dart';
 
 class RegistroClienteScreen extends StatefulWidget {
   const RegistroClienteScreen({super.key});
@@ -56,6 +57,15 @@ class _RegistroClienteScreenState extends State<RegistroClienteScreen> {
       mostrarError(context, 'Debes verificar tu número de teléfono antes de registrarte.');
       return;
     }
+
+    // El formulario ya se validó y el teléfono ya está verificado -- ahora
+    // se muestran los términos y condiciones / protección de datos. Solo si
+    // la persona los acepta explícitamente se procede a crear la cuenta.
+    final aceptoTerminos = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const TerminosCondicionesScreen()),
+    );
+    if (aceptoTerminos != true) return;
+    if (!mounted) return;
 
     setState(() => _cargando = true);
 
