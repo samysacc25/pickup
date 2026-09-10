@@ -298,44 +298,19 @@ class _HomeConductorScreenState extends State<HomeConductorScreen> {
   // el conductor propone el suyo y el cliente decide si lo acepta.
   Future<void> _ofertarPrecio(Solicitud solicitud) async {
     final sugerido = solicitud.tarifaPropuestaCliente ?? solicitud.tarifaSugerida;
-    final controlador = TextEditingController(text: sugerido.toStringAsFixed(2));
 
+    // El controlador del campo vive dentro del propio diálogo (ver
+    // _DialogoOfertarPrecio) para que Flutter lo libere recién cuando el
+    // diálogo termina de salir de pantalla. Antes se creaba aquí y se
+    // liberaba apenas showDialog devolvía el valor, pero en ese momento la
+    // animación de cierre todavía corre y el campo de texto sigue vivo
+    // usándolo -- por eso la app reventaba justo después de enviar la
+    // oferta con "_dependents.isEmpty is not true".
     final monto = await showDialog<double>(
       context: context,
-      builder: (contexto) => AlertDialog(
-        title: const Text('Ofertar tu precio'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'El cliente pide este viaje por \$${sugerido.toStringAsFixed(2)}. Puedes proponerle otro precio y él decide si lo acepta.',
-              style: const TextStyle(fontSize: 13, color: Colors.grey),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controlador,
-              autofocus: true,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Tu precio', prefixText: '\$ '),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(contexto).pop(), child: const Text('Cancelar')),
-          ElevatedButton(
-            onPressed: () {
-              final valor = double.tryParse(controlador.text.trim().replaceAll(',', '.'));
-              if (valor == null || valor <= 0) return;
-              Navigator.of(contexto).pop(valor);
-            },
-            child: const Text('Enviar oferta'),
-          ),
-        ],
-      ),
+      builder: (_) => _DialogoOfertarPrecio(precioCliente: sugerido),
     );
 
-    controlador.dispose();
     if (monto == null || !mounted) return;
 
     try {
@@ -482,6 +457,77 @@ class _HomeConductorScreenState extends State<HomeConductorScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// Diálogo para proponerle otro precio al cliente. Es un widget con estado
+// propio a propósito: así el TextEditingController se crea y se libera con
+// el ciclo de vida del diálogo, sin que nadie lo libere mientras el campo
+// todavía está en pantalla.
+class _DialogoOfertarPrecio extends StatefulWidget {
+  final double precioCliente;
+
+  const _DialogoOfertarPrecio({required this.precioCliente});
+
+  @override
+  State<_DialogoOfertarPrecio> createState() => _DialogoOfertarPrecioState();
+}
+
+class _DialogoOfertarPrecioState extends State<_DialogoOfertarPrecio> {
+  late final TextEditingController _precioCtrl;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _precioCtrl = TextEditingController(text: widget.precioCliente.toStringAsFixed(2));
+  }
+
+  @override
+  void dispose() {
+    _precioCtrl.dispose();
+    super.dispose();
+  }
+
+  void _enviar() {
+    final valor = double.tryParse(_precioCtrl.text.trim().replaceAll(',', '.'));
+    if (valor == null || valor <= 0) {
+      // Antes el botón simplemente no hacía nada si el monto no era válido,
+      // sin explicarle al conductor por qué.
+      setState(() => _error = 'Ingresa un precio válido.');
+      return;
+    }
+    Navigator.of(context).pop(valor);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Ofertar tu precio'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'El cliente pide este viaje por \$${widget.precioCliente.toStringAsFixed(2)}. Puedes proponerle otro precio y él decide si lo acepta.',
+            style: const TextStyle(fontSize: 13, color: Colors.grey),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _precioCtrl,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _enviar(),
+            decoration: InputDecoration(labelText: 'Tu precio', prefixText: '\$ ', errorText: _error),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancelar')),
+        ElevatedButton(onPressed: _enviar, child: const Text('Enviar oferta')),
+      ],
     );
   }
 }

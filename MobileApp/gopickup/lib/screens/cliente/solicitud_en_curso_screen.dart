@@ -403,9 +403,14 @@ class _SolicitudEnCursoScreenState extends State<SolicitudEnCursoScreen> {
             ),
           ),
           Container(
+            // Con varias ofertas en pantalla este panel crece bastante: se
+            // le pone un tope de altura y se hace desplazable para que no
+            // se desborde en celulares de pantalla corta.
+            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
             padding: const EdgeInsets.all(20),
             decoration: const BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 12)]),
-            child: Column(
+            child: SingleChildScrollView(
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(textoEstado(solicitud.estado), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: GoPickupColors.verdeOscuro)),
@@ -479,6 +484,7 @@ class _SolicitudEnCursoScreenState extends State<SolicitudEnCursoScreen> {
                     ),
                   ),
               ],
+              ),
             ),
           ),
         ],
@@ -513,17 +519,17 @@ class _SolicitudEnCursoScreenState extends State<SolicitudEnCursoScreen> {
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
             ),
           ),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 250),
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount: _ofertas.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (_, i) => _TarjetaOferta(
-                oferta: _ofertas[i],
+          // Las tarjetas van como hijas normales de la columna (y no en una
+          // lista con su propio scroll) porque el panel entero ya se
+          // desplaza: así no se pelean dos scrolls en el mismo eje.
+          ..._ofertas.map(
+            (oferta) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _TarjetaOferta(
+                oferta: oferta,
                 deshabilitado: _procesandoOferta,
-                onAceptar: () => _aceptarOferta(_ofertas[i]),
-                onRechazar: () => _rechazarOferta(_ofertas[i]),
+                onAceptar: () => _aceptarOferta(oferta),
+                onRechazar: () => _rechazarOferta(oferta),
               ),
             ),
           ),
