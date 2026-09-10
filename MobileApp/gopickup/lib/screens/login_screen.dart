@@ -58,61 +58,76 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // La pantalla se puede desplazar: al abrirse el teclado, el alto
+    // disponible se reduce y antes el contenido no cabía (salía la franja
+    // amarilla y negra de "BOTTOM OVERFLOWED" en debug, y en release el
+    // botón de Ingresar quedaba tapado). Con el ConstrainedBox +
+    // IntrinsicHeight el formulario se sigue viendo centrado cuando sí hay
+    // espacio de sobra, que es como se veía antes.
     return Scaffold(
       body: SafeArea(
-        child: ContenedorResponsivo(
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                //const Icon(Icons.local_shipping, color: GoPickupColors.verde, size: 56),
-                Image.asset(
-                  'assets/iconopickUp.png',
-                  width: 180,
-                  height: 180,
-                ),
-                const SizedBox(height: 4),
-               /* const Text('GO', textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic, color: GoPickupColors.verde)),
-                const Text('PICKUP', textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: 2, color: GoPickupColors.verdeOscuro)),
-                */const SizedBox(height: 32),
-                if (_error != null)
-                  Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(_error!, style: const TextStyle(color: Colors.red))),
-                TextFormField(
-                  controller: _correoCtrl,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Correo electrónico', prefixIcon: Icon(Icons.email_outlined)),
-                  validator: (v) => (v == null || !v.contains('@')) ? 'Ingresa un correo válido' : null,
-                ),
-                const SizedBox(height: 12),
-                CampoClave(
-                  controller: _claveCtrl,
-                  validator: (v) => (v == null || v.length < 6) ? 'Mínimo 6 caracteres' : null,
-                ),
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RestablecerClaveScreen())),
-                    child: const Text('¿Olvidaste tu contraseña?'),
+        child: LayoutBuilder(
+          builder: (context, restricciones) => SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: restricciones.maxHeight),
+              child: IntrinsicHeight(
+                child: ContenedorResponsivo(
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        //const Icon(Icons.local_shipping, color: GoPickupColors.verde, size: 56),
+                        Image.asset(
+                          'assets/iconopickUp.png',
+                          width: 180,
+                          height: 180,
+                        ),
+                        const SizedBox(height: 4),
+                       /* const Text('GO', textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic, color: GoPickupColors.verde)),
+                        const Text('PICKUP', textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: 2, color: GoPickupColors.verdeOscuro)),
+                        */const SizedBox(height: 32),
+                        if (_error != null)
+                          Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(_error!, style: const TextStyle(color: Colors.red))),
+                        TextFormField(
+                          controller: _correoCtrl,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: const InputDecoration(labelText: 'Correo electrónico', prefixIcon: Icon(Icons.email_outlined)),
+                          validator: (v) => (v == null || !v.contains('@')) ? 'Ingresa un correo válido' : null,
+                        ),
+                        const SizedBox(height: 12),
+                        CampoClave(
+                          controller: _claveCtrl,
+                          validator: (v) => (v == null || v.length < 6) ? 'Mínimo 6 caracteres' : null,
+                        ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RestablecerClaveScreen())),
+                            child: const Text('¿Olvidaste tu contraseña?'),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _cargando ? null : _iniciarSesion,
+                          child: _cargando
+                              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                              : const Text('Ingresar'),
+                        ),
+                        const SizedBox(height: 16),
+                        TextButton(
+                          onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegistroSeleccionScreen())),
+                          child: const Text('¿No tienes cuenta? Regístrate'),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: _cargando ? null : _iniciarSesion,
-                  child: _cargando
-                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Text('Ingresar'),
-                ),
-                const SizedBox(height: 16),
-                TextButton(
-                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegistroSeleccionScreen())),
-                  child: const Text('¿No tienes cuenta? Regístrate'),
-                ),
-              ],
+              ),
             ),
           ),
         ),
