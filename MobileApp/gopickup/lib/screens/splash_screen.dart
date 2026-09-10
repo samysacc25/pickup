@@ -51,10 +51,15 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.local_shipping, color: Colors.white, size: 64),
-            const SizedBox(height: 12),
-            const Text('GO', style: TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic)),
-            const Text('PICKUP', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 2)),
+            //const Icon(Icons.local_shipping, color: Colors.white, size: 64),
+            //const SizedBox(height: 12),
+            Image.asset(
+              'assets/iconopickUp.png',
+              width: 180,
+              height: 180,
+            ),
+            //const Text('GO', style: TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic)),
+            //const Text('PICKUP', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 2)),
             const SizedBox(height: 4),
             const Text('Tu transporte confiable', style: TextStyle(color: Colors.white70, fontSize: 13)),
             const SizedBox(height: 24),

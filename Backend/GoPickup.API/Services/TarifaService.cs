@@ -37,10 +37,10 @@ namespace GoPickup.API.Services
         public TarifaService(IConfiguration config)
         {
             _tarifaPorKmSinCarga = config.GetValue<decimal>("Tarifas:TarifaPorKmSinCarga", 0.55m);
-            _tarifaPorKmConCarga = config.GetValue<decimal>("Tarifas:TarifaPorKmConCarga", 0.90m);
+            _tarifaPorKmConCarga = config.GetValue<decimal>("Tarifas:TarifaPorKmConCarga", 1.10m);
             _banderazoDia = config.GetValue<decimal>("Tarifas:BanderazoDia", 0.42m);
             _banderazoNoche = config.GetValue<decimal>("Tarifas:BanderazoNoche", 0.46m);
-            _tarifaMinima = config.GetValue<decimal>("Tarifas:TarifaMinima", 1.45m);
+            _tarifaMinima = config.GetValue<decimal>("Tarifas:TarifaMinima", 1.50m);
             _umbralKmInterprovincial = config.GetValue<double>("Tarifas:UmbralKmInterprovincial", 45);
             _latRef = config.GetValue<double>("Tarifas:LatitudReferenciaTungurahua", -1.2417);
             _lonRef = config.GetValue<double>("Tarifas:LongitudReferenciaTungurahua", -78.6197);
