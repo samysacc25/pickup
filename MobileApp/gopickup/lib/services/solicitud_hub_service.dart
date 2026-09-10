@@ -3,6 +3,7 @@ import 'package:signalr_netcore/hub_connection.dart';
 import 'package:signalr_netcore/hub_connection_builder.dart';
 import '../config/api_config.dart';
 import '../models/solicitud.dart';
+import '../models/oferta.dart';
 
 class MensajeChat {
   final String remitente; // "cliente" o "conductor"
@@ -31,6 +32,17 @@ class SolicitudHubService {
   // (ver ConductoresController.ActualizarUbicacion en el backend).
   final _conductorLlegoController = StreamController<void>.broadcast();
   Stream<void> get conductorLlego => _conductorLlegoController.stream;
+
+  // Negociación de precio. El cliente recibe cada oferta que le hacen los
+  // conductores; el conductor recibe la respuesta a la suya.
+  final _nuevaOfertaController = StreamController<Oferta>.broadcast();
+  Stream<Oferta> get nuevasOfertas => _nuevaOfertaController.stream;
+
+  final _ofertaAceptadaController = StreamController<Solicitud>.broadcast();
+  Stream<Solicitud> get ofertaAceptada => _ofertaAceptadaController.stream;
+
+  final _ofertaRechazadaController = StreamController<int>.broadcast();
+  Stream<int> get ofertaRechazada => _ofertaRechazadaController.stream;
 
   SolicitudHubService(this.token);
 
@@ -70,6 +82,13 @@ class SolicitudHubService {
       _conductorLlegoController.add(null);
     });
 
+    // Ofertas de precio que llegan mientras el cliente espera conductor.
+    _conexion!.on('nuevaOferta', (args) {
+      if (args != null && args.isNotEmpty) {
+        _nuevaOfertaController.add(Oferta.fromJson(args[0] as Map<String, dynamic>));
+      }
+    });
+
     await _conexion!.start();
     await _conexion!.invoke('UnirseASolicitud', args: [solicitudId]);
   }
@@ -89,6 +108,23 @@ class SolicitudHubService {
     _conexion!.on('nuevaSolicitudDisponible', (args) {
       if (args != null && args.isNotEmpty) {
         alLlegarNuevaSolicitud(Solicitud.fromJson(args[0] as Map<String, dynamic>));
+      }
+    });
+
+    // Respuesta del cliente a un precio que este conductor ofertó. Llegan
+    // por su grupo privado ("conductor-{id}"), al que el Hub lo une al
+    // ponerse disponible, así que ningún otro conductor las ve.
+    _conexion!.on('ofertaAceptada', (args) {
+      if (args != null && args.isNotEmpty) {
+        _ofertaAceptadaController.add(Solicitud.fromJson(args[0] as Map<String, dynamic>));
+      }
+    });
+
+    _conexion!.on('ofertaRechazada', (args) {
+      if (args != null && args.isNotEmpty) {
+        final datos = args[0] as Map<String, dynamic>;
+        final solicitudId = datos['solicitudId'];
+        if (solicitudId is int) _ofertaRechazadaController.add(solicitudId);
       }
     });
 
@@ -124,5 +160,8 @@ class SolicitudHubService {
   void dispose() {
     _mensajesChatController.close();
     _conductorLlegoController.close();
+    _nuevaOfertaController.close();
+    _ofertaAceptadaController.close();
+    _ofertaRechazadaController.close();
   }
 }

@@ -176,13 +176,225 @@ namespace GoPickup.API.Controllers
 
             conductor.Estado = EstadoConductor.EnViaje;
 
+            // Si otros conductores habían ofertado un precio para esta
+            // solicitud, esas ofertas quedan sin efecto. Si el que acepta
+            // tenía una oferta propia pendiente, también se cierra, pero sin
+            // avisarle "te rechazaron" -- es él mismo quien tomó el viaje.
+            var ofertasDescartadas = (await RechazarOfertasPendientesAsync(solicitud.Id))
+                .Where(o => o.ConductorId != conductor.Id)
+                .ToList();
+
             await _db.SaveChangesAsync();
             var respuestaAceptada = await ObtenerRespuesta(solicitud.Id);
             await _hub.Clients.Group($"solicitud-{solicitud.Id}").SendAsync("solicitudActualizada", respuestaAceptada);
+            await AvisarOfertasRechazadasAsync(solicitud.Id, ofertasDescartadas);
 
             await NotificarClientePorPush(solicitud.ClienteId, "¡Conductor asignado!", $"{respuestaAceptada.ConductorNombre} va a atender tu solicitud.", solicitud.Id);
 
             return Ok(respuestaAceptada);
+        }
+
+        // ---------------------------------------------------------------
+        // Negociación de precio (ofertas del conductor al cliente)
+        // ---------------------------------------------------------------
+
+        // El conductor propone un precio distinto al que pidió el cliente.
+        // La solicitud sigue en "Buscando" y otros conductores pueden ofertar
+        // también -- el cliente ve todas las ofertas y elige.
+        [HttpPost("{id}/ofertas")]
+        [Authorize(Roles = "Conductor")]
+        public async Task<ActionResult<OfertaRespuestaDto>> CrearOferta(int id, CrearOfertaDto dto)
+        {
+            var conductor = await _db.Conductores.Include(c => c.Usuario).Include(c => c.Vehiculo)
+                .FirstOrDefaultAsync(c => c.UsuarioId == UsuarioIdActual);
+            if (conductor is null) return Forbid();
+
+            if (conductor.EstadoSolicitud != EstadoSolicitudConductor.Aprobada)
+                return BadRequest(new { mensaje = "Tu cuenta de conductor aún no ha sido aprobada por el administrador." });
+
+            if (conductor.Estado != EstadoConductor.Disponible)
+                return BadRequest(new { mensaje = "No puedes ofertar mientras tienes otro viaje en curso." });
+
+            var solicitud = await _db.Solicitudes.FirstOrDefaultAsync(s => s.Id == id);
+            if (solicitud is null) return NotFound();
+
+            if (solicitud.Estado != EstadoSolicitud.Buscando)
+                return BadRequest(new { mensaje = "Esta solicitud ya no está disponible." });
+
+            // Tope para que una oferta absurda no llegue a molestar al
+            // cliente; dentro de ese rango el conductor negocia libremente.
+            var montoMaximo = solicitud.TarifaSugerida * 5;
+            if (dto.Monto > montoMaximo)
+                return BadRequest(new { mensaje = $"El monto máximo que puedes ofertar para este viaje es ${montoMaximo:0.00}." });
+
+            var oferta = await _db.OfertasSolicitud.FirstOrDefaultAsync(o => o.SolicitudId == id && o.ConductorId == conductor.Id);
+
+            if (oferta is not null && oferta.Estado == EstadoOferta.Rechazada)
+                return BadRequest(new { mensaje = "El cliente ya rechazó tu oferta para este viaje." });
+
+            if (oferta is null)
+            {
+                oferta = new OfertaSolicitud { SolicitudId = id, ConductorId = conductor.Id };
+                _db.OfertasSolicitud.Add(oferta);
+            }
+
+            oferta.Monto = dto.Monto;
+            oferta.Estado = EstadoOferta.Pendiente;
+            oferta.FechaCreacion = DateTime.UtcNow;
+            oferta.FechaRespuesta = null;
+            oferta.ConductorLatitud = dto.Latitud ?? conductor.UltimaLatitud;
+            oferta.ConductorLongitud = dto.Longitud ?? conductor.UltimaLongitud;
+
+            await _db.SaveChangesAsync();
+
+            var respuesta = MapearOferta(oferta, conductor, solicitud);
+
+            // El cliente está unido al grupo de su solicitud desde que la
+            // crea, así que ve la oferta llegar en vivo.
+            await _hub.Clients.Group($"solicitud-{id}").SendAsync("nuevaOferta", respuesta);
+            await NotificarClientePorPush(
+                solicitud.ClienteId,
+                "Nueva oferta para tu viaje",
+                $"{respuesta.ConductorNombre} te ofrece llevarte por ${oferta.Monto:0.00}",
+                id);
+
+            return Ok(respuesta);
+        }
+
+        // Ofertas pendientes que ha recibido el cliente para su solicitud.
+        [HttpGet("{id}/ofertas")]
+        [Authorize(Roles = "Cliente")]
+        public async Task<ActionResult<List<OfertaRespuestaDto>>> ObtenerOfertas(int id)
+        {
+            var solicitud = await _db.Solicitudes.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id);
+            if (solicitud is null) return NotFound();
+            if (solicitud.ClienteId != UsuarioIdActual) return Forbid();
+
+            var ofertas = await _db.OfertasSolicitud
+                .AsNoTracking()
+                .Include(o => o.Conductor).ThenInclude(c => c!.Usuario)
+                .Include(o => o.Conductor).ThenInclude(c => c!.Vehiculo)
+                .Where(o => o.SolicitudId == id && o.Estado == EstadoOferta.Pendiente)
+                .OrderBy(o => o.Monto)
+                .ToListAsync();
+
+            return Ok(ofertas.Select(o => MapearOferta(o, o.Conductor, solicitud)).ToList());
+        }
+
+        // El cliente acepta una oferta: ese conductor queda asignado y su
+        // monto pasa a ser la tarifa acordada del viaje.
+        [HttpPost("{id}/ofertas/{ofertaId}/aceptar")]
+        [Authorize(Roles = "Cliente")]
+        public async Task<ActionResult<SolicitudRespuestaDto>> AceptarOferta(int id, int ofertaId)
+        {
+            // Serializable para que dos toques seguidos (o dos ofertas
+            // aceptadas casi a la vez) no asignen dos conductores.
+            using var transaccion = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+
+            var solicitud = await _db.Solicitudes.FirstOrDefaultAsync(s => s.Id == id);
+            if (solicitud is null) return NotFound();
+            if (solicitud.ClienteId != UsuarioIdActual) return Forbid();
+
+            if (solicitud.Estado != EstadoSolicitud.Buscando)
+                return BadRequest(new { mensaje = "Esta solicitud ya no está buscando conductor." });
+
+            var oferta = await _db.OfertasSolicitud
+                .Include(o => o.Conductor)
+                .FirstOrDefaultAsync(o => o.Id == ofertaId && o.SolicitudId == id);
+            if (oferta is null) return NotFound();
+
+            if (oferta.Estado != EstadoOferta.Pendiente)
+                return BadRequest(new { mensaje = "Esa oferta ya no está disponible." });
+
+            var conductor = oferta.Conductor;
+            if (conductor is null || conductor.EstadoSolicitud != EstadoSolicitudConductor.Aprobada)
+                return BadRequest(new { mensaje = "Ese conductor ya no está disponible." });
+
+            if (conductor.Estado != EstadoConductor.Disponible)
+                return BadRequest(new { mensaje = "Ese conductor ya tomó otro viaje. Elige otra oferta o espera una nueva." });
+
+            solicitud.ConductorId = conductor.Id;
+            solicitud.Estado = EstadoSolicitud.Aceptada;
+            solicitud.FechaAceptacion = DateTime.UtcNow;
+            solicitud.TarifaAcordada = oferta.Monto;
+
+            conductor.Estado = EstadoConductor.EnViaje;
+
+            oferta.Estado = EstadoOferta.Aceptada;
+            oferta.FechaRespuesta = DateTime.UtcNow;
+
+            var ofertasDescartadas = await RechazarOfertasPendientesAsync(id);
+
+            await _db.SaveChangesAsync();
+            await transaccion.CommitAsync();
+
+            var respuesta = await ObtenerRespuesta(id);
+            await _hub.Clients.Group($"solicitud-{id}").SendAsync("solicitudActualizada", respuesta);
+
+            // Aviso en vivo al conductor ganador (está unido a su propio
+            // grupo mientras esté disponible) y a los que quedaron fuera.
+            await _hub.Clients.Group($"conductor-{conductor.Id}").SendAsync("ofertaAceptada", respuesta);
+            await AvisarOfertasRechazadasAsync(id, ofertasDescartadas);
+
+            await NotificarConductorPorPush(
+                conductor.Id,
+                "¡Tu oferta fue aceptada!",
+                $"{respuesta.ClienteNombre} aceptó tu precio de ${oferta.Monto:0.00}",
+                id);
+
+            return Ok(respuesta);
+        }
+
+        // El cliente rechaza una oferta concreta; la solicitud sigue
+        // buscando y ese conductor recibe el aviso.
+        [HttpPut("{id}/ofertas/{ofertaId}/rechazar")]
+        [Authorize(Roles = "Cliente")]
+        public async Task<IActionResult> RechazarOferta(int id, int ofertaId)
+        {
+            var solicitud = await _db.Solicitudes.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id);
+            if (solicitud is null) return NotFound();
+            if (solicitud.ClienteId != UsuarioIdActual) return Forbid();
+
+            var oferta = await _db.OfertasSolicitud.FirstOrDefaultAsync(o => o.Id == ofertaId && o.SolicitudId == id);
+            if (oferta is null) return NotFound();
+
+            if (oferta.Estado == EstadoOferta.Pendiente)
+            {
+                oferta.Estado = EstadoOferta.Rechazada;
+                oferta.FechaRespuesta = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
+
+                await _hub.Clients.Group($"conductor-{oferta.ConductorId}")
+                    .SendAsync("ofertaRechazada", new { solicitudId = id, ofertaId = oferta.Id });
+
+                await NotificarConductorPorPush(oferta.ConductorId, "Oferta rechazada", "El cliente no aceptó tu precio para ese viaje.", id);
+            }
+
+            return NoContent();
+        }
+
+        // Ofertas que el propio conductor ha enviado en las últimas horas,
+        // con su estado. La app las consulta cada pocos segundos como
+        // respaldo por si el aviso en tiempo real no llegó.
+        [HttpGet("mis-ofertas")]
+        [Authorize(Roles = "Conductor")]
+        public async Task<ActionResult<List<OfertaRespuestaDto>>> MisOfertas()
+        {
+            var conductor = await _db.Conductores.AsNoTracking()
+                .Include(c => c.Usuario)
+                .Include(c => c.Vehiculo)
+                .FirstOrDefaultAsync(c => c.UsuarioId == UsuarioIdActual);
+            if (conductor is null) return Forbid();
+
+            var desde = DateTime.UtcNow.AddHours(-2);
+            var ofertas = await _db.OfertasSolicitud
+                .AsNoTracking()
+                .Include(o => o.Solicitud)
+                .Where(o => o.ConductorId == conductor.Id && o.FechaCreacion >= desde)
+                .OrderByDescending(o => o.FechaCreacion)
+                .ToListAsync();
+
+            return Ok(ofertas.Select(o => MapearOferta(o, conductor, o.Solicitud)).ToList());
         }
 
         [HttpPut("{id}/en-camino")]
@@ -262,9 +474,14 @@ namespace GoPickup.API.Controllers
             if (solicitud.Conductor is not null)
                 solicitud.Conductor.Estado = EstadoConductor.Disponible;
 
+            // Las ofertas de precio que estuvieran esperando respuesta se
+            // descartan: ya no hay viaje que negociar.
+            var ofertasDescartadas = await RechazarOfertasPendientesAsync(id);
+
             await BorrarHistorialChatAsync(id);
             await _db.SaveChangesAsync();
             await _hub.Clients.Group($"solicitud-{solicitud.Id}").SendAsync("solicitudActualizada", await ObtenerRespuesta(solicitud.Id));
+            await AvisarOfertasRechazadasAsync(id, ofertasDescartadas);
 
             return Ok(await ObtenerRespuesta(solicitud.Id));
         }
@@ -409,6 +626,82 @@ namespace GoPickup.API.Controllers
         {
             var mensajes = await _db.MensajesChat.Where(m => m.SolicitudId == solicitudId).ToListAsync();
             if (mensajes.Count > 0) _db.MensajesChat.RemoveRange(mensajes);
+        }
+
+        // Marca como rechazadas todas las ofertas que seguían pendientes en
+        // una solicitud (porque ya se asignó un conductor o se canceló) y
+        // devuelve el ConductorId + Id de cada una para poder avisarles.
+        // No llama a SaveChanges: el llamador lo hace junto con el resto de
+        // sus cambios, y luego usa AvisarOfertasRechazadasAsync.
+        private async Task<List<(int ConductorId, int OfertaId)>> RechazarOfertasPendientesAsync(int solicitudId)
+        {
+            var pendientes = await _db.OfertasSolicitud
+                .Where(o => o.SolicitudId == solicitudId && o.Estado == EstadoOferta.Pendiente)
+                .ToListAsync();
+
+            var afectadas = new List<(int, int)>();
+            foreach (var oferta in pendientes)
+            {
+                oferta.Estado = EstadoOferta.Rechazada;
+                oferta.FechaRespuesta = DateTime.UtcNow;
+                afectadas.Add((oferta.ConductorId, oferta.Id));
+            }
+            return afectadas;
+        }
+
+        private async Task AvisarOfertasRechazadasAsync(int solicitudId, List<(int ConductorId, int OfertaId)> ofertas)
+        {
+            foreach (var (conductorId, ofertaId) in ofertas)
+            {
+                await _hub.Clients.Group($"conductor-{conductorId}")
+                    .SendAsync("ofertaRechazada", new { solicitudId, ofertaId });
+            }
+        }
+
+        private OfertaRespuestaDto MapearOferta(OfertaSolicitud oferta, Conductor? conductor, Solicitud? solicitud)
+        {
+            double? distancia = null;
+            int? minutos = null;
+
+            if (solicitud is not null && oferta.ConductorLatitud is not null && oferta.ConductorLongitud is not null)
+            {
+                distancia = _tarifaService.CalcularDistanciaKm(
+                    oferta.ConductorLatitud.Value, oferta.ConductorLongitud.Value,
+                    solicitud.OrigenLatitud, solicitud.OrigenLongitud);
+                minutos = _tarifaService.EstimarDuracionMinutos(distancia.Value);
+            }
+
+            return new OfertaRespuestaDto
+            {
+                Id = oferta.Id,
+                SolicitudId = oferta.SolicitudId,
+                ConductorId = oferta.ConductorId,
+                ConductorNombre = conductor?.Usuario?.NombreCompleto ?? string.Empty,
+                CalificacionConductor = conductor?.CalificacionPromedio ?? 5.0,
+                VehiculoPlaca = conductor?.Vehiculo?.Placa,
+                VehiculoDescripcion = conductor?.Vehiculo is null
+                    ? null
+                    : $"{conductor.Vehiculo.Marca} {conductor.Vehiculo.Modelo} - {conductor.Vehiculo.Color}",
+                VehiculoTipo = conductor?.Vehiculo?.TipoCamioneta,
+                Monto = oferta.Monto,
+                Estado = oferta.Estado,
+                ConductorLatitud = oferta.ConductorLatitud,
+                ConductorLongitud = oferta.ConductorLongitud,
+                DistanciaAlOrigenKm = distancia is null ? null : Math.Round(distancia.Value, 2),
+                MinutosLlegadaEstimados = minutos,
+                FechaCreacion = oferta.FechaCreacion
+            };
+        }
+
+        private async Task NotificarConductorPorPush(int conductorId, string titulo, string cuerpo, int solicitudId)
+        {
+            var token = await _db.Conductores
+                .Where(c => c.Id == conductorId)
+                .Select(c => c.Usuario!.TokenPushNotificacion)
+                .FirstOrDefaultAsync();
+
+            await _push.EnviarAsync(token, titulo, cuerpo,
+                new Dictionary<string, string> { { "tipo", "respuesta_oferta" }, { "solicitudId", solicitudId.ToString() } });
         }
 
         private async Task NotificarClientePorPush(int clienteId, string titulo, string cuerpo, int solicitudId)

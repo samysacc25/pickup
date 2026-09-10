@@ -58,13 +58,23 @@ namespace GoPickup.API.Hubs
 
         public async Task UnirseComoConductorDisponible()
         {
-            if (Context.User!.IsInRole("Conductor"))
-                await Groups.AddToGroupAsync(Context.ConnectionId, "conductores-disponibles");
+            if (!Context.User!.IsInRole("Conductor")) return;
+
+            await Groups.AddToGroupAsync(Context.ConnectionId, "conductores-disponibles");
+
+            // Grupo propio de cada conductor: por aquí le llegan los avisos
+            // que son solo para él (si el cliente aceptó o rechazó el precio
+            // que ofertó), sin exponerlos al resto de conductores.
+            if (ConductorIdActual is int conductorId)
+                await Groups.AddToGroupAsync(Context.ConnectionId, $"conductor-{conductorId}");
         }
 
         public async Task SalirComoConductorDisponible()
         {
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, "conductores-disponibles");
+
+            if (ConductorIdActual is int conductorId)
+                await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"conductor-{conductorId}");
         }
 
         public async Task EnviarUbicacionConductor(int solicitudId, double lat, double lon)

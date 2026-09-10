@@ -19,6 +19,15 @@ namespace GoPickup.API.Models
         SinConductores = 8
     }
 
+    // Estado de una contraoferta de precio hecha por un conductor sobre una
+    // solicitud (negociación de tarifa entre conductor y cliente).
+    public enum EstadoOferta
+    {
+        Pendiente = 1,
+        Aceptada = 2,
+        Rechazada = 3
+    }
+
     public enum EstadoConductor
     {
         Desconectado = 0,

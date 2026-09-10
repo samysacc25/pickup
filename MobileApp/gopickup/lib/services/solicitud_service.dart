@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'api_client.dart';
 import '../config/api_config.dart';
 import '../models/solicitud.dart';
+import '../models/oferta.dart';
 import 'solicitud_hub_service.dart' show MensajeChat;
 
 class SolicitudService {
@@ -117,6 +118,65 @@ class SolicitudService {
       return Solicitud.fromJson(jsonDecode(utf8.decode(respuesta.bodyBytes)));
     }
     throw Exception(ApiClient.mensajeDeError(respuesta, 'No se pudo aceptar la solicitud.'));
+  }
+
+  // --- Negociación de precio -------------------------------------------
+  // El conductor propone su propio precio en vez de aceptar el que puso el
+  // cliente; el cliente ve la oferta y decide si la acepta o la rechaza.
+
+  Future<Oferta> crearOferta(int solicitudId, double monto, {double? latitud, double? longitud}) async {
+    final respuesta = await ApiClient.post(
+      Uri.parse('${ApiConfig.baseUrl}/solicitudes/$solicitudId/ofertas'),
+      headers: _headers,
+      body: jsonEncode({'monto': monto, 'latitud': latitud, 'longitud': longitud}),
+    );
+    if (respuesta.statusCode == 200) {
+      return Oferta.fromJson(jsonDecode(utf8.decode(respuesta.bodyBytes)));
+    }
+    throw Exception(ApiClient.mensajeDeError(respuesta, 'No se pudo enviar tu oferta.'));
+  }
+
+  Future<List<Oferta>> obtenerOfertas(int solicitudId) async {
+    final respuesta = await ApiClient.get(
+      Uri.parse('${ApiConfig.baseUrl}/solicitudes/$solicitudId/ofertas'),
+      headers: _headers,
+    );
+    if (respuesta.statusCode != 200) return [];
+    final lista = jsonDecode(utf8.decode(respuesta.bodyBytes)) as List;
+    return lista.map((e) => Oferta.fromJson(e)).toList();
+  }
+
+  Future<Solicitud> aceptarOferta(int solicitudId, int ofertaId) async {
+    final respuesta = await ApiClient.post(
+      Uri.parse('${ApiConfig.baseUrl}/solicitudes/$solicitudId/ofertas/$ofertaId/aceptar'),
+      headers: _headers,
+    );
+    if (respuesta.statusCode == 200) {
+      return Solicitud.fromJson(jsonDecode(utf8.decode(respuesta.bodyBytes)));
+    }
+    throw Exception(ApiClient.mensajeDeError(respuesta, 'No se pudo aceptar la oferta.'));
+  }
+
+  Future<void> rechazarOferta(int solicitudId, int ofertaId) async {
+    final respuesta = await ApiClient.put(
+      Uri.parse('${ApiConfig.baseUrl}/solicitudes/$solicitudId/ofertas/$ofertaId/rechazar'),
+      headers: _headers,
+    );
+    if (respuesta.statusCode != 204) {
+      throw Exception(ApiClient.mensajeDeError(respuesta, 'No se pudo rechazar la oferta.'));
+    }
+  }
+
+  // Ofertas que el conductor envió y en qué quedaron. Se consulta cada pocos
+  // segundos como respaldo por si el aviso en tiempo real no llegó.
+  Future<List<Oferta>> misOfertas() async {
+    final respuesta = await ApiClient.get(
+      Uri.parse('${ApiConfig.baseUrl}/solicitudes/mis-ofertas'),
+      headers: _headers,
+    );
+    if (respuesta.statusCode != 200) return [];
+    final lista = jsonDecode(utf8.decode(respuesta.bodyBytes)) as List;
+    return lista.map((e) => Oferta.fromJson(e)).toList();
   }
 
   Future<Solicitud> marcarEnCamino(int id) => _cambiarEstado(id, 'en-camino');

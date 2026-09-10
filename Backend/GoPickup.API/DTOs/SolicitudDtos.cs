@@ -63,6 +63,45 @@ namespace GoPickup.API.DTOs
         public DateTime Fecha { get; set; }
     }
 
+    // Negociación de precio: el conductor propone un monto distinto al que
+    // pidió el cliente y el cliente decide si lo acepta.
+    public class CrearOfertaDto
+    {
+        [Range(0.5, 500.0)]
+        public decimal Monto { get; set; }
+
+        // Ubicación del conductor al ofertar, para calcularle al cliente la
+        // distancia y el tiempo estimado de llegada de ese conductor.
+        public double? Latitud { get; set; }
+        public double? Longitud { get; set; }
+    }
+
+    public class OfertaRespuestaDto
+    {
+        public int Id { get; set; }
+        public int SolicitudId { get; set; }
+        public int ConductorId { get; set; }
+        public string ConductorNombre { get; set; } = string.Empty;
+        public double CalificacionConductor { get; set; }
+        public string? VehiculoPlaca { get; set; }
+        public string? VehiculoDescripcion { get; set; }
+        public TipoCamioneta? VehiculoTipo { get; set; }
+
+        public decimal Monto { get; set; }
+        public EstadoOferta Estado { get; set; }
+
+        public double? ConductorLatitud { get; set; }
+        public double? ConductorLongitud { get; set; }
+
+        // Distancia en línea recta entre el conductor y el punto de recogida,
+        // y el tiempo aproximado que tardaría en llegar (la app refina este
+        // número con la ruta real cuando puede).
+        public double? DistanciaAlOrigenKm { get; set; }
+        public int? MinutosLlegadaEstimados { get; set; }
+
+        public DateTime FechaCreacion { get; set; }
+    }
+
     public class SolicitudRespuestaDto
     {
         public int Id { get; set; }

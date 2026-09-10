@@ -14,6 +14,7 @@ namespace GoPickup.API.Data
         public DbSet<Solicitud> Solicitudes => Set<Solicitud>();
         public DbSet<CodigoVerificacionTelefono> CodigosVerificacionTelefono => Set<CodigoVerificacionTelefono>();
         public DbSet<MensajeChatSolicitud> MensajesChat => Set<MensajeChatSolicitud>();
+        public DbSet<OfertaSolicitud> OfertasSolicitud => Set<OfertaSolicitud>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -61,6 +62,25 @@ namespace GoPickup.API.Data
                 .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<MensajeChatSolicitud>().HasIndex(m => m.SolicitudId);
+
+            // Ofertas de precio de los conductores sobre una solicitud.
+            modelBuilder.Entity<OfertaSolicitud>()
+                .HasOne(o => o.Solicitud)
+                .WithMany()
+                .HasForeignKey(o => o.SolicitudId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<OfertaSolicitud>()
+                .HasOne(o => o.Conductor)
+                .WithMany()
+                .HasForeignKey(o => o.ConductorId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<OfertaSolicitud>().Property(o => o.Monto).HasColumnType("decimal(10,2)");
+
+            // Un conductor solo puede tener una oferta por solicitud (si
+            // vuelve a ofertar, se actualiza el monto de la que ya tenía).
+            modelBuilder.Entity<OfertaSolicitud>().HasIndex(o => new { o.SolicitudId, o.ConductorId }).IsUnique();
 
             // SQL Server no guarda la zona horaria de un DateTime: aunque se
             // guarde con DateTime.UtcNow, al leerlo de vuelta EF Core lo
