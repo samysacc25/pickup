@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import '../../theme/go_pickup_theme.dart';
 import '../../models/usuario.dart';
 import '../../models/solicitud.dart';
+import '../../models/oferta.dart';
 import '../../services/auth_service.dart';
 import '../../services/solicitud_service.dart';
 import '../../services/solicitud_hub_service.dart';
@@ -31,6 +32,7 @@ class _HomeConductorScreenState extends State<HomeConductorScreen> {
 
   GoogleMapController? _mapController;
   Position? _posicionActual;
+  BitmapDescriptor? _iconoCamioneta;
   Timer? _timerUbicacion;
   Timer? _timerSolicitudesDisponibles;
   final Set<int> _solicitudesYaMostradas = {};
@@ -51,6 +53,13 @@ class _HomeConductorScreenState extends State<HomeConductorScreen> {
   // la pantalla del servicio en curso) siga escuchando en segundo plano.
   bool _tieneViajeActivo = false;
 
+  // Precios que este conductor ya ofertó, por solicitud: mientras la oferta
+  // sigue pendiente, la tarjeta se queda mostrando "esperando respuesta" en
+  // vez de desaparecer con el contador.
+  final Map<int, Oferta> _ofertasEnviadas = {};
+  StreamSubscription<Solicitud>? _subOfertaAceptada;
+  StreamSubscription<int>? _subOfertaRechazada;
+
   static const CameraPosition _posicionInicial = CameraPosition(
     target: LatLng(-1.2417, -78.6197),
     zoom: 13,
@@ -62,8 +71,10 @@ class _HomeConductorScreenState extends State<HomeConductorScreen> {
     _solicitudService = SolicitudService(widget.sesion.token);
     _conductorService = conductor_srv.ConductorService(widget.sesion.token);
     _hubService = SolicitudHubService(widget.sesion.token);
+    _cargarIconoCamioneta();
     _obtenerUbicacionActual();
     _restaurarDisponibilidadSiCorresponde();
+    _escucharRespuestasAOfertas();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       PushNotificationService().inicializar(token: widget.sesion.token, context: context);
     });
@@ -79,9 +90,82 @@ class _HomeConductorScreenState extends State<HomeConductorScreen> {
   Future<void> _restaurarDisponibilidadSiCorresponde() async {
     final estado = await _conductorService.obtenerEstadoActual();
     if (!mounted) return;
+
+    // El conductor quedó marcado como "en viaje" en el servidor: eso pasa,
+    // por ejemplo, si el cliente aceptó el precio que él ofertó mientras la
+    // app estaba cerrada. Antes se quedaba trabado -- el servidor no le
+    // dejaba ofertar ni aceptar nada ("ya tienes un viaje en curso") y la
+    // app no le mostraba ese viaje por ningún lado. Ahora se recupera y se
+    // abre la pantalla del servicio que tiene pendiente.
+    if (estado == conductor_srv.EstadoConductor.enViaje) {
+      await _retomarViajeActivo();
+      return;
+    }
+
     if (estado == conductor_srv.EstadoConductor.disponible && !_disponible) {
       await _alternarDisponibilidad(true);
     }
+  }
+
+  Future<void> _retomarViajeActivo() async {
+    try {
+      final misViajes = await _solicitudService.misSolicitudes();
+      if (!mounted) return;
+
+      Solicitud? activo;
+      for (final s in misViajes) {
+        if (s.estaActiva) {
+          activo = s;
+          break;
+        }
+      }
+
+      if (activo != null) {
+        await _irAlViaje(activo.id);
+        // Al terminar (o cancelarse) ese viaje el servidor lo deja
+        // disponible otra vez: hay que reconectarlo aquí, si no la app se
+        // queda mostrándolo como desconectado y no le entra ni una
+        // solicitud hasta que toque el switch a mano.
+        if (mounted) await _restaurarDisponibilidadSiCorresponde();
+        return;
+      }
+
+      // Quedó marcado "en viaje" pero no hay ningún servicio activo (por
+      // ejemplo si algo se cortó a medias): se libera para que pueda seguir
+      // recibiendo solicitudes.
+      await _conductorService.cambiarEstado(conductor_srv.EstadoConductor.disponible);
+      if (mounted) await _alternarDisponibilidad(true);
+    } catch (_) {}
+  }
+
+  Future<void> _cargarIconoCamioneta() async {
+    try {
+      final icono = await BitmapDescriptor.fromAssetImage(
+        const ImageConfiguration(size: Size(48, 48)),
+        'assets/icons/camioneta_marker.png',
+      );
+      if (mounted) setState(() => _iconoCamioneta = icono);
+    } catch (_) {}
+  }
+
+  // Respuesta del cliente a un precio ofertado. Llega en vivo por el grupo
+  // privado del conductor en SignalR; el sondeo de _revisarMisOfertas() es
+  // el respaldo por si esa conexión se cayó.
+  void _escucharRespuestasAOfertas() {
+    _subOfertaAceptada = _hubService.ofertaAceptada.listen((solicitud) {
+      if (!mounted) return;
+      SonidoNotificacion.reproducir();
+      _irAlViaje(solicitud.id);
+    });
+
+    _subOfertaRechazada = _hubService.ofertaRechazada.listen((solicitudId) {
+      if (!mounted || _tieneViajeActivo) return;
+      setState(() {
+        _ofertasEnviadas.remove(solicitudId);
+        _solicitudesEntrantes.removeWhere((s) => s.id == solicitudId);
+      });
+      mostrarError(context, 'El cliente no aceptó tu oferta.');
+    });
   }
 
   Future<void> _obtenerUbicacionActual() async {
@@ -116,8 +200,17 @@ class _HomeConductorScreenState extends State<HomeConductorScreen> {
           }
         }
 
+        // Se cancelan los anteriores por si esta ruta se recorre dos veces
+        // (por ejemplo al volver de un viaje): si no, quedarían timers
+        // duplicados reportando ubicación y consultando solicitudes.
+        _timerUbicacion?.cancel();
+        _timerSolicitudesDisponibles?.cancel();
+
         _timerUbicacion = Timer.periodic(const Duration(seconds: 10), (_) => _reportarUbicacion());
-        _timerSolicitudesDisponibles = Timer.periodic(const Duration(seconds: 8), (_) => _revisarSolicitudesDisponibles());
+        _timerSolicitudesDisponibles = Timer.periodic(const Duration(seconds: 8), (_) {
+          _revisarSolicitudesDisponibles();
+          _revisarMisOfertas();
+        });
         _reportarUbicacion();
         _revisarSolicitudesDisponibles();
       } else {
@@ -173,22 +266,119 @@ class _HomeConductorScreenState extends State<HomeConductorScreen> {
     try {
       final actualizada = await _solicitudService.aceptarSolicitud(solicitud.id);
       if (!mounted) return;
-      // Ya aceptó un viaje: se quitan todas las demás ofertas pendientes y se
-      // deja de mostrar nuevas mientras dure este servicio.
-      setState(() {
-        _tieneViajeActivo = true;
-        _solicitudesEntrantes.clear();
-      });
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => ServicioEnCursoConductorScreen(sesion: widget.sesion, solicitudId: actualizada.id)),
-      );
-      if (mounted) setState(() => _tieneViajeActivo = false);
+      await _irAlViaje(actualizada.id);
     } catch (e) {
       if (mounted) {
         _quitarSolicitudEntrante(solicitud.id);
         mostrarError(context, textoError(e));
       }
     }
+  }
+
+  // Entra a la pantalla del servicio. Se usa tanto al aceptar directo el
+  // precio del cliente como cuando el cliente acepta un precio ofertado.
+  Future<void> _irAlViaje(int solicitudId) async {
+    if (_tieneViajeActivo) return;
+
+    // Ya tiene viaje: se quitan las demás solicitudes pendientes y se deja
+    // de mostrar nuevas mientras dure este servicio.
+    setState(() {
+      _tieneViajeActivo = true;
+      _solicitudesEntrantes.clear();
+      _ofertasEnviadas.clear();
+    });
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ServicioEnCursoConductorScreen(sesion: widget.sesion, solicitudId: solicitudId)),
+    );
+    if (mounted) setState(() => _tieneViajeActivo = false);
+  }
+
+  // Negociación de precio: en vez de aceptar el monto que puso el cliente,
+  // el conductor propone el suyo y el cliente decide si lo acepta.
+  Future<void> _ofertarPrecio(Solicitud solicitud) async {
+    final sugerido = solicitud.tarifaPropuestaCliente ?? solicitud.tarifaSugerida;
+    final controlador = TextEditingController(text: sugerido.toStringAsFixed(2));
+
+    final monto = await showDialog<double>(
+      context: context,
+      builder: (contexto) => AlertDialog(
+        title: const Text('Ofertar tu precio'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'El cliente pide este viaje por \$${sugerido.toStringAsFixed(2)}. Puedes proponerle otro precio y él decide si lo acepta.',
+              style: const TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controlador,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Tu precio', prefixText: '\$ '),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(contexto).pop(), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () {
+              final valor = double.tryParse(controlador.text.trim().replaceAll(',', '.'));
+              if (valor == null || valor <= 0) return;
+              Navigator.of(contexto).pop(valor);
+            },
+            child: const Text('Enviar oferta'),
+          ),
+        ],
+      ),
+    );
+
+    controlador.dispose();
+    if (monto == null || !mounted) return;
+
+    try {
+      final oferta = await _solicitudService.crearOferta(
+        solicitud.id,
+        monto,
+        latitud: _posicionActual?.latitude,
+        longitud: _posicionActual?.longitude,
+      );
+      if (!mounted) return;
+      setState(() => _ofertasEnviadas[solicitud.id] = oferta);
+      mostrarExito(context, 'Oferta enviada. Espera la respuesta del cliente.');
+    } catch (e) {
+      if (mounted) mostrarError(context, textoError(e));
+    }
+  }
+
+  // Respaldo del aviso en tiempo real: revisa en qué quedaron las ofertas
+  // que este conductor envió.
+  Future<void> _revisarMisOfertas() async {
+    if (_ofertasEnviadas.isEmpty || _tieneViajeActivo) return;
+
+    try {
+      final ofertas = await _solicitudService.misOfertas();
+      if (!mounted) return;
+
+      for (final oferta in ofertas) {
+        if (!_ofertasEnviadas.containsKey(oferta.solicitudId)) continue;
+
+        if (oferta.estado == EstadoOferta.aceptada) {
+          SonidoNotificacion.reproducir();
+          await _irAlViaje(oferta.solicitudId);
+          return;
+        }
+
+        if (oferta.estado == EstadoOferta.rechazada) {
+          setState(() {
+            _ofertasEnviadas.remove(oferta.solicitudId);
+            _solicitudesEntrantes.removeWhere((s) => s.id == oferta.solicitudId);
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _cerrarSesion() async {
@@ -204,6 +394,8 @@ class _HomeConductorScreenState extends State<HomeConductorScreen> {
   void dispose() {
     _timerUbicacion?.cancel();
     _timerSolicitudesDisponibles?.cancel();
+    _subOfertaAceptada?.cancel();
+    _subOfertaRechazada?.cancel();
     _hubService.desconectar();
     _hubService.dispose();
     super.dispose();
@@ -223,9 +415,18 @@ class _HomeConductorScreenState extends State<HomeConductorScreen> {
             onMapCreated: (c) => _mapController = c,
             myLocationEnabled: true,
             myLocationButtonEnabled: true,
+            // Ícono de camioneta en la posición exacta del conductor.
             markers: _posicionActual == null
                 ? {}
-                : {Marker(markerId: const MarkerId('yo'), position: LatLng(_posicionActual!.latitude, _posicionActual!.longitude))},
+                : {
+                    Marker(
+                      markerId: const MarkerId('yo'),
+                      position: LatLng(_posicionActual!.latitude, _posicionActual!.longitude),
+                      infoWindow: const InfoWindow(title: 'Tu camioneta'),
+                      icon: _iconoCamioneta ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueYellow),
+                      anchor: const Offset(0.5, 0.5),
+                    )
+                  },
           ),
           if (_solicitudesEntrantes.isNotEmpty)
             Positioned(
@@ -243,9 +444,11 @@ class _HomeConductorScreenState extends State<HomeConductorScreen> {
                               child: _TarjetaSolicitudEntrante(
                                 key: ValueKey(s.id),
                                 solicitud: s,
+                                montoOfertado: _ofertasEnviadas[s.id]?.monto,
                                 onExpirar: () => _quitarSolicitudEntrante(s.id),
                                 onRechazar: () => _quitarSolicitudEntrante(s.id),
                                 onAceptar: () => _aceptarSolicitudEntrante(s),
+                                onOfertar: () => _ofertarPrecio(s),
                               ),
                             ))
                         .toList(),
@@ -293,12 +496,23 @@ class _TarjetaSolicitudEntrante extends StatefulWidget {
   final VoidCallback onRechazar;
   final VoidCallback onExpirar;
 
+  // Devuelve un Future porque abre un diálogo: mientras el conductor decide
+  // el precio, la tarjeta congela su contador para no desaparecerle debajo.
+  final Future<void> Function() onOfertar;
+
+  // Monto que este conductor ya ofertó para esta solicitud (si ofertó). Con
+  // una oferta enviada la tarjeta deja de contar hacia atrás y se queda
+  // esperando la respuesta del cliente.
+  final double? montoOfertado;
+
   const _TarjetaSolicitudEntrante({
     super.key,
     required this.solicitud,
     required this.onAceptar,
     required this.onRechazar,
     required this.onExpirar,
+    required this.onOfertar,
+    this.montoOfertado,
   });
 
   @override
@@ -314,6 +528,10 @@ class _TarjetaSolicitudEntranteState extends State<_TarjetaSolicitudEntrante> {
   @override
   void initState() {
     super.initState();
+    if (widget.montoOfertado == null) _iniciarContador();
+  }
+
+  void _iniciarContador() {
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (_segundosRestantes <= 1) {
         t.cancel();
@@ -322,6 +540,34 @@ class _TarjetaSolicitudEntranteState extends State<_TarjetaSolicitudEntrante> {
         setState(() => _segundosRestantes--);
       }
     });
+  }
+
+  // Mientras el diálogo del precio está abierto se detiene el contador: si
+  // no, la tarjeta expiraba y desaparecía justo mientras el conductor
+  // escribía su oferta. Si al final no ofertó, el contador se reanuda.
+  Future<void> _abrirOferta() async {
+    _timer?.cancel();
+    _timer = null;
+    // Además de congelar el contador, se bloquean los botones para que un
+    // doble toque no abra dos diálogos (y mande dos ofertas).
+    setState(() => _procesando = true);
+
+    await widget.onOfertar();
+
+    if (!mounted) return;
+    setState(() => _procesando = false);
+    if (widget.montoOfertado == null && _timer == null) _iniciarContador();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TarjetaSolicitudEntrante anterior) {
+    super.didUpdateWidget(anterior);
+    // Al enviar una oferta, la tarjeta ya no expira sola: se queda visible
+    // mientras el cliente decide.
+    if (widget.montoOfertado != null && _timer != null) {
+      _timer?.cancel();
+      _timer = null;
+    }
   }
 
   @override
@@ -335,6 +581,7 @@ class _TarjetaSolicitudEntranteState extends State<_TarjetaSolicitudEntrante> {
     final s = widget.solicitud;
     final tarifa = s.tarifaPropuestaCliente ?? s.tarifaSugerida;
     final progreso = _segundosRestantes / _segundosTotales;
+    final yaOferto = widget.montoOfertado != null;
 
     return Material(
       elevation: 6,
@@ -350,7 +597,7 @@ class _TarjetaSolicitudEntranteState extends State<_TarjetaSolicitudEntrante> {
               children: [
                 Text('\$${tarifa.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: GoPickupColors.verdeOscuro)),
                 const SizedBox(width: 8),
-                Text('$_segundosRestantes s', style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600)),
+                if (!yaOferto) Text('$_segundosRestantes s', style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600)),
                 const Spacer(),
                 if (s.distanciaKm != null)
                   Chip(
@@ -361,15 +608,16 @@ class _TarjetaSolicitudEntranteState extends State<_TarjetaSolicitudEntrante> {
               ],
             ),
             const SizedBox(height: 6),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: progreso,
-                minHeight: 4,
-                backgroundColor: Colors.grey.shade200,
-                valueColor: AlwaysStoppedAnimation<Color>(progreso > 0.3 ? GoPickupColors.verde : Colors.red),
+            if (!yaOferto)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: progreso,
+                  minHeight: 4,
+                  backgroundColor: Colors.grey.shade200,
+                  valueColor: AlwaysStoppedAnimation<Color>(progreso > 0.3 ? GoPickupColors.verde : Colors.red),
+                ),
               ),
-            ),
             const SizedBox(height: 10),
             Row(
               children: [
@@ -402,27 +650,57 @@ class _TarjetaSolicitudEntranteState extends State<_TarjetaSolicitudEntrante> {
               Expanded(child: Text(s.destinoDireccion, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
             ]),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _procesando ? null : () { setState(() => _procesando = true); widget.onRechazar(); },
-                    style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
-                    child: const Text('Rechazar'),
-                  ),
+            // Con una oferta ya enviada, la tarjeta solo espera la respuesta
+            // del cliente (que llega en vivo o por el sondeo de mis-ofertas).
+            if (yaOferto)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: GoPickupColors.verde.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: GoPickupColors.verde),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _procesando ? null : () { setState(() => _procesando = true); widget.onAceptar(); },
-                    style: ElevatedButton.styleFrom(backgroundColor: GoPickupColors.verde),
-                    child: _procesando
-                        ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : const Text('Aceptar'),
-                  ),
+                child: Row(
+                  children: [
+                    const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: GoPickupColors.verde)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Ofertaste \$${widget.montoOfertado!.toStringAsFixed(2)} · esperando respuesta del cliente',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: GoPickupColors.verdeOscuro),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              )
+            else ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _procesando ? null : () { setState(() => _procesando = true); widget.onRechazar(); },
+                      style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
+                      child: const Text('Rechazar'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _procesando ? null : _abrirOferta,
+                      child: const Text('Ofertar precio', style: TextStyle(fontSize: 13)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ElevatedButton(
+                onPressed: _procesando ? null : () { setState(() => _procesando = true); widget.onAceptar(); },
+                style: ElevatedButton.styleFrom(backgroundColor: GoPickupColors.verde),
+                child: _procesando
+                    ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : Text('Aceptar por \$${tarifa.toStringAsFixed(2)}'),
+              ),
+            ],
           ],
         ),
       ),
